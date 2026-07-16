@@ -3,29 +3,36 @@
 
 Write-Host "== Web Test Hub - prvni instalace ==" -ForegroundColor Cyan
 
-# 1) Overeni Pythonu
-$pythonOk = $false
+# 1) Overeni Pythonu - zjisti, ktery prikaz (py launcher, nebo primo python)
+#    na tomto pocitaci skutecne funguje, a pouzij dal jen ten, ne oba napevno.
+$pythonExe = $null
+$pythonArgs = @()
 try {
-    py -3 --version
-    $pythonOk = $true
+    py -3 --version | Out-Null
+    $pythonExe = "py"
+    $pythonArgs = @("-3")
 } catch {
     try {
-        python --version
-        $pythonOk = $true
+        python --version | Out-Null
+        $pythonExe = "python"
+        $pythonArgs = @()
     } catch {
-        $pythonOk = $false
+        $pythonExe = $null
     }
 }
 
-if (-not $pythonOk) {
+if (-not $pythonExe) {
     Write-Host "[CHYBA] Python nebyl nalezen. Nainstaluj ho z https://www.python.org/downloads/ a spust znovu." -ForegroundColor Red
+    Write-Host "Pri instalaci zaskrtni volbu 'Add python.exe to PATH'." -ForegroundColor Yellow
     Read-Host "Stiskni Enter pro ukonceni"
     exit 1
 }
 
+Write-Host "Pouzivam Python pres prikaz: $pythonExe $($pythonArgs -join ' ')" -ForegroundColor DarkGray
+
 # 2) Vytvoreni virtualniho prostredi
 Write-Host "Vytvarim .venv ..." -ForegroundColor Cyan
-py -3 -m venv .venv
+& $pythonExe @pythonArgs -m venv .venv
 if (-not (Test-Path ".\.venv\Scripts\activate.ps1")) {
     Write-Host "[CHYBA] Nelze aktivovat .venv - zkontroluj opravneni." -ForegroundColor Red
     Read-Host "Stiskni Enter pro ukonceni"
