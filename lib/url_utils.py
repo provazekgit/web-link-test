@@ -25,6 +25,15 @@ _DEFAULT_EXCLUDE_KEYWORDS = [
     "wishlist", "seznam-prani",
     # administrace obecně
     "admin", "administrace",
+    # akční odkazy, které nejsou skutečné stránky (jen mění stav – přidání
+    # do košíku, kupón, AJAX handler…), typicky WooCommerce a podobné e-shopy
+    "add-to-cart", "wc-ajax", "remove_item", "undo_item",
+    "apply_coupon", "remove_coupon",
+    # Cloudflare si takhle přepisuje mailto: odkazy proti spamu – není to
+    # skutečná stránka, jen dekódovací endpoint, který bez JS vrací 404
+    "cdn-cgi/l/email-protection",
+    # odkazy na odpověď na komentář ve WordPressu (nekonečně variant té samé stránky)
+    "replytocom",
 ]
 
 
@@ -56,12 +65,16 @@ _EXCLUDE_RE = (
 
 
 def is_excluded_path(u: str) -> bool:
-    """Je URL stránka, kterou chceme z automatického testu vynechat
-    (vyžaduje přihlášení, je to košík/pokladna, administrace apod.)?"""
+    """Je URL stránka, kterou chceme z automatického testu vynechat –
+    buď vyžaduje přihlášení (košík/pokladna/administrace), nebo to vůbec
+    není skutečná stránka k testování (akční odkaz typu add-to-cart,
+    Cloudflare email-protection apod.)? Kontroluje cestu i query string,
+    protože právě tam bývá např. `?add-to-cart=1234`."""
     if not _EXCLUDE_RE:
         return False
-    path = urlparse(u).path or ""
-    return bool(_EXCLUDE_RE.search(path))
+    p = urlparse(u)
+    path_and_query = p.path + (("?" + p.query) if p.query else "")
+    return bool(_EXCLUDE_RE.search(path_and_query))
 
 
 def norm_host(u: str) -> str | None:

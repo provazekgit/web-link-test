@@ -114,21 +114,24 @@ def check_links(urls: List[str]) -> List[Dict[str, object]]:
         status = -1
         err = ""
         try:
-            # jednoduchý retry 2x
-            for attempt in range(2):
-                try:
-                    r = head(u, timeout=HTTP_TIMEOUT)
-                    status = r.status_code
-                    if status in (405, 403):
-                        r2 = get_html(u, timeout=HTTP_TIMEOUT)
-                        status = r2.status_code
-                    break
-                except Exception as e:
-                    err = str(e)[:300]
-                    if attempt == 1:
-                        raise
-        except Exception:
-            pass
+            r = head(u, timeout=HTTP_TIMEOUT)
+            status = r.status_code
+            if status in (405, 403):
+                r = get_html(u, timeout=HTTP_TIMEOUT)
+                status = r.status_code
+        except Exception as e1:
+            # HEAD selhal/timeoutnul – řada webů (hlavně za Cloudflare/WAF)
+            # bere osamocené HEAD požadavky jako podezřelé a škrtí je nebo
+            # je nechá viset. Zkus to ještě jednou jako běžný GET, než to
+            # označíme za chybu – ušetří to i zbytečné dvojité čekání na
+            # timeout té samé metody.
+            err = str(e1)[:300]
+            try:
+                r = get_html(u, timeout=HTTP_TIMEOUT)
+                status = r.status_code
+                err = ""
+            except Exception as e2:
+                err = str(e2)[:300]
         return {
             "url": u,
             "status": status,

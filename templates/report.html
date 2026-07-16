@@ -88,7 +88,7 @@
     <div class="stat fail"><div class="num">{{ failed }}</div><div class="label">Vyžaduje pozornost</div></div>
     <div class="stat"><div class="num">{{ fmt_ms(avg_ms) }} ms</div><div class="label">Průměrná odezva</div></div>
     {% if excluded_urls %}
-    <div class="stat"><div class="num">{{ excluded_urls|length }}</div><div class="label">Vynecháno (přihlášení)</div></div>
+    <div class="stat"><div class="num">{{ excluded_urls|length }}</div><div class="label">Vynecháno z testu</div></div>
     {% endif %}
   </div>
 
@@ -121,7 +121,7 @@
   {% if excluded_urls %}
   <section>
     <details class="excluded-box">
-      <summary>{{ excluded_urls|length }} stránka(y) záměrně vynechána z testu – vyžadují přihlášení / košík / administraci</summary>
+      <summary>{{ excluded_urls|length }} stránka(y) záměrně vynechána z testu – vyžadují přihlášení, jsou to košík/administrace, nebo to nejsou skutečné stránky (např. „přidat do košíku")</summary>
       <ul>
         {% for u in excluded_urls %}<li>{{ u }}</li>{% endfor %}
       </ul>

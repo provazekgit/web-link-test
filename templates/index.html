@@ -69,7 +69,7 @@
     {% if r.estimate %}
         <div><strong>Souhrn:</strong> zkontrolováno stránek: <strong>{{ r.pages }}</strong>,
           vytvořených screenshotů: <strong>{{ r.screens }}</strong>{% if r.excluded %},
-          vynecháno (vyžadují přihlášení): <strong>{{ r.excluded }}</strong>{% endif %}</div>
+          vynecháno z testu: <strong>{{ r.excluded }}</strong>{% endif %}</div>
 
         <div style="margin-top:.4rem">
           ⏱ <strong>Skutečná doba testu:</strong> {{ r.duration }}
