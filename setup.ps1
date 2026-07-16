@@ -1,9 +1,9 @@
-# setup.ps1  — spustíš pravým tlačítkem "Spustit pomocí PowerShell" 
+# setup.ps1 - spustis pravym tlacitkem "Spustit pomoci PowerShell"
 # nebo: powershell -ExecutionPolicy Bypass -File .\setup.ps1
 
-Write-Host "== Web Test Hub – první instalace ==" -ForegroundColor Cyan
+Write-Host "== Web Test Hub - prvni instalace ==" -ForegroundColor Cyan
 
-# 1️⃣ Ověření Pythonu
+# 1) Overeni Pythonu
 $pythonOk = $false
 try {
     py -3 --version
@@ -18,40 +18,41 @@ try {
 }
 
 if (-not $pythonOk) {
-    Write-Host "❌ Python nebyl nalezen. Nainstaluj ho z https://www.python.org/downloads/ a spusť znovu." -ForegroundColor Red
-    Read-Host "Stiskni Enter pro ukončení"
+    Write-Host "[CHYBA] Python nebyl nalezen. Nainstaluj ho z https://www.python.org/downloads/ a spust znovu." -ForegroundColor Red
+    Read-Host "Stiskni Enter pro ukonceni"
     exit 1
 }
 
-# 2️⃣ Vytvoření virtuálního prostředí
-Write-Host "Vytvářím .venv ..." -ForegroundColor Cyan
+# 2) Vytvoreni virtualniho prostredi
+Write-Host "Vytvarim .venv ..." -ForegroundColor Cyan
 py -3 -m venv .venv
 if (-not (Test-Path ".\.venv\Scripts\activate.ps1")) {
-    Write-Host "❌ Nelze aktivovat .venv – zkontroluj oprávnění." -ForegroundColor Red
+    Write-Host "[CHYBA] Nelze aktivovat .venv - zkontroluj opravneni." -ForegroundColor Red
+    Read-Host "Stiskni Enter pro ukonceni"
     exit 1
 }
 
-# 3️⃣ Aktivace a instalace balíčků
-Write-Host "Instaluji balíčky..." -ForegroundColor Cyan
+# 3) Aktivace a instalace balicku
+Write-Host "Instaluji balicky..." -ForegroundColor Cyan
 . .\.venv\Scripts\Activate.ps1
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# 4️⃣ Instalace Playwright prohlížečů
-Write-Host "Instaluji Playwright prohlížeče..." -ForegroundColor Cyan
+# 4) Instalace Playwright prohlizecu
+Write-Host "Instaluji Playwright prohlizece..." -ForegroundColor Cyan
 python -m playwright install
 
-# 5️⃣ Kopie .env souboru
+# 5) Kopie .env souboru
 if (-not (Test-Path ".\.env")) {
     if (Test-Path ".\.env.example") {
         Copy-Item ".\.env.example" ".\.env"
-        Write-Host "✅ Vytvořen .env z .env.example" -ForegroundColor Green
+        Write-Host "[OK] Vytvoren .env z .env.example - dopln si v nem BASIC_USER a BASIC_PASS." -ForegroundColor Green
     } else {
-        Write-Host "⚠️ Soubor .env.example chybí, vytvoř ho ručně." -ForegroundColor Yellow
+        Write-Host "[POZOR] Soubor .env.example chybi, vytvor .env rucne." -ForegroundColor Yellow
     }
 }
 
 Write-Host ""
-Write-Host "✅ Instalace dokončena." -ForegroundColor Green
-Write-Host "Aplikaci spustíš příkazem: python app.py" -ForegroundColor Cyan
-Write-Host "nebo jednoduše přes run.bat (až ho vytvoříme)" -ForegroundColor Yellow
+Write-Host "[OK] Instalace dokoncena." -ForegroundColor Green
+Write-Host "Aplikaci spustis prikazem run.bat (nebo: python app.py)" -ForegroundColor Cyan
+Read-Host "Stiskni Enter pro ukonceni"
