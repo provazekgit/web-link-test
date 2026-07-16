@@ -7,9 +7,10 @@ from dotenv import load_dotenv
 # Načti .env ze stejné složky jako proces (typicky root projektu)
 load_dotenv()
 
-# Načti přihlašovací údaje (fallbacky pro test)
-BASIC_USER = os.getenv("BASIC_USER", "adminkk")
-BASIC_PASS = os.getenv("BASIC_PASS", "Super-GI1983")
+# Přihlašovací údaje – musí být v .env (žádný pevně zadaný fallback v kódu,
+# ať se náhodou nedostane do veřejného repozitáře).
+BASIC_USER = os.getenv("BASIC_USER")
+BASIC_PASS = os.getenv("BASIC_PASS")
 
 # Volitelně: vypni auth pro lokální vývoj přes .env:
 # AUTH_OFF=1

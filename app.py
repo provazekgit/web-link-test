@@ -1,7 +1,9 @@
 # app.py
 import os
 import time
+import threading
 import traceback
+import webbrowser
 from flask import Flask, render_template, request, send_from_directory
 from dotenv import load_dotenv
 from utils import requires_auth, fmt_duration
@@ -43,6 +45,11 @@ REPORTS_ROOT = os.path.abspath(
     os.getenv("REPORTS_DIR", os.path.join(os.path.dirname(__file__), "reports"))
 )
 os.makedirs(REPORTS_ROOT, exist_ok=True)
+
+# Kde aplikace poběží a jestli se má po startu sama otevřít v prohlížeči
+HOST = os.getenv("HOST", "127.0.0.1")
+PORT = int(os.getenv("PORT", "8080"))
+OPEN_BROWSER = os.getenv("OPEN_BROWSER", "1") == "1"
 
 app = Flask(__name__)
 
@@ -212,8 +219,134 @@ def serve_report(path):
     return send_from_directory(REPORTS_ROOT, path)
 
 # ---------------------------------------------------------------
-# START APLIKACE
+# START APLIKACE – kontrola prostředí, hláška a auto-otevření prohlížeče
 # ---------------------------------------------------------------
 
+def _check_playwright_browser() -> bool:
+    """Ověří, že jde reálně spustit Chromium (screenshoty/PDF to potřebují)."""
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            b = p.chromium.launch(headless=True)
+            b.close()
+        return True
+    except Exception:
+        return False
+
+def _check_writable(folder: str) -> bool:
+    try:
+        probe = os.path.join(folder, ".write_test")
+        with open(probe, "w") as f:
+            f.write("ok")
+        os.remove(probe)
+        return True
+    except Exception:
+        return False
+
+def _print_startup_report() -> bool:
+    """Zkontroluje .env/prostředí, vypíše přehlednou hlášku a vrátí,
+    jestli je aplikace v pořádku ke spuštění (chybí-li povinné údaje, ne)."""
+    from utils import AUTH_OFF, BASIC_USER, BASIC_PASS
+
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
+    warnings = []
+    problems = []
+
+    if not os.path.exists(env_path):
+        warnings.append(
+            ".env nenalezen – běží se jen s výchozími hodnotami. "
+            "Zkopíruj .env.example na .env a uprav si podle sebe."
+        )
+
+    if AUTH_OFF:
+        warnings.append("AUTH_OFF=1 – přihlašování je VYPNUTÉ (jen pro lokální vývoj!).")
+    elif not BASIC_USER or not BASIC_PASS:
+        problems.append(
+            "V .env chybí BASIC_USER a/nebo BASIC_PASS. Doplň je "
+            "(nebo dočasně nastav AUTH_OFF=1 jen pro lokální test)."
+        )
+
+    reports_ok = _check_writable(REPORTS_ROOT)
+    if not reports_ok:
+        problems.append(f"Do složky pro reporty se nedá zapisovat: {REPORTS_ROOT}")
+
+    print("Ověřuji prostředí (Playwright prohlížeč)…")
+    browser_ok = _check_playwright_browser()
+    if not browser_ok:
+        warnings.append(
+            "Playwright prohlížeč není připravený – screenshoty a PDF export nebudou fungovat. "
+            "Spusť: python -m playwright install"
+        )
+
+    url = f"http://{HOST}:{PORT}/"
+    line = "=" * 60
+    print(line)
+    print("  Web Link Test")
+    print(line)
+    print(f"  Adresa:            {url}")
+    if AUTH_OFF:
+        auth_line = "vypnuto (AUTH_OFF=1)"
+    elif BASIC_USER and BASIC_PASS:
+        auth_line = f"zapnuto (uživatel: {BASIC_USER})"
+    else:
+        auth_line = "CHYBÍ – viz níže"
+    print(f"  Přihlášení:        {auth_line}")
+    print(f"  Reporty se ukládají do: {REPORTS_ROOT} {'✅' if reports_ok else '❌'}")
+    print(f"  Screenshoty / PDF: {'✅ připraveno' if browser_ok else '❌ chybí Playwright prohlížeč'}")
+    print(
+        f"  Šetrnost k webu:   max {scanner.MAX_CONCURRENT_REQUESTS} souběžných "
+        f"požadavků, {scanner.REQUEST_DELAY_MS} ms prodleva mezi nimi"
+    )
+    print(line)
+
+    if warnings:
+        print("\nUpozornění:")
+        for w in warnings:
+            print(f"  ⚠️  {w}")
+    if problems:
+        print("\nBez tohohle to nepůjde spustit:")
+        for p in problems:
+            print(f"  ❌ {p}")
+        print()
+        return False
+
+    print()
+    return True
+
+def _open_browser_when_ready(url: str, timeout: float = 15):
+    """Počká, až server začne odpovídat, a pak otevře výchozí prohlížeč."""
+    import urllib.error
+    import urllib.request
+
+    deadline = time.time() + timeout
+    ready = False
+    while time.time() < deadline:
+        try:
+            urllib.request.urlopen(url, timeout=0.5)
+            ready = True
+            break
+        except urllib.error.HTTPError:
+            # i chybová odpověď (např. 401 Basic Auth) znamená, že server běží
+            ready = True
+            break
+        except Exception:
+            time.sleep(0.2)
+    if ready:
+        try:
+            webbrowser.open(url)
+        except Exception:
+            pass
+
 if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=8080, debug=False)
+    ok = _print_startup_report()
+    if not ok:
+        raise SystemExit(1)
+
+    if OPEN_BROWSER:
+        threading.Thread(
+            target=_open_browser_when_ready,
+            args=(f"http://{HOST}:{PORT}/",),
+            daemon=True,
+        ).start()
+
+    app.run(host=HOST, port=PORT, debug=False)
