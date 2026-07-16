@@ -97,7 +97,8 @@ def run():
     # --- 2) Výpočet odhadu času (základ) ---
     estimate_sec = pages_count * CHECK_PER_PAGE_SEC
     screens_manifest = []
-    top_seen = set()
+    top_pages = tested_urls[:5]
+    top_seen = {_canonical_url(u) for u in top_pages}
 
     # --- 3) Založ finální složku reportu a screenshoty ukládej rovnou tam ---
     job_dir = scanner.make_job_dir(REPORTS_ROOT, base_url)
@@ -106,8 +107,6 @@ def run():
     try:
         from lib.visual import screenshot_pages
 
-        top_pages = tested_urls[:5]
-        top_seen = {_canonical_url(u) for u in top_pages}
         auto_devices = [
             "Desktop Chrome", "Desktop Firefox", "Desktop Edge", "Desktop Opera",
             "iPhone 13 Safari", "Android Chrome (Pixel 7)",
@@ -168,7 +167,19 @@ def run():
         print(f"[screenshots:user] přeskočeno: {e}")
         traceback.print_exc()
 
-    # --- 5) Zápis reportu (obsahuje i seskupené screenshoty a vyloučené stránky) ---
+    # --- 5) SEO/indexační kontrola (title, meta popis, H1, noindex, canonical,
+    #        robots.txt, sitemap.xml) – na stejných top stránkách jako screenshoty ---
+    seo_pages, seo_site = [], {}
+    try:
+        from lib import seo
+
+        seo_pages = seo.analyze_pages(top_pages)
+        seo_site = seo.check_site_indexing(base_url)
+    except Exception as e:
+        print(f"[seo] přeskočeno: {e}")
+        traceback.print_exc()
+
+    # --- 6) Zápis reportu (obsahuje i seskupené screenshoty a vyloučené stránky) ---
     duration_sec = time.time() - started_at
     scanner.write_report(
         job_dir,
@@ -177,9 +188,11 @@ def run():
         excluded_urls=excluded_urls,
         screenshots=screens_manifest,
         duration_sec=duration_sec,
+        seo_pages=seo_pages,
+        seo_site=seo_site,
     )
 
-    # --- 6) Vytvoření PDF z HTML reportu ---
+    # --- 7) Vytvoření PDF z HTML reportu ---
     index_path = os.path.join(job_dir, "index.html")
     pdf_path = os.path.join(job_dir, "report.pdf")
     try:
@@ -187,7 +200,7 @@ def run():
     except Exception as e:
         print(f"[PDF] Nepodařilo se vytvořit PDF: {e}")
 
-    # --- 7) Výsledky ---
+    # --- 8) Výsledky ---
     screens_count = _count_pngs(screens_dir)
     estimate_text = fmt_duration(estimate_sec)
     duration_text = fmt_duration(duration_sec)

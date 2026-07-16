@@ -46,6 +46,15 @@
   .excluded-box ul{margin:10px 0 0;padding-left:20px;max-height:220px;overflow:auto}
   .excluded-box li{word-break:break-all;margin-bottom:2px}
 
+  .seo-site{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
+  .seo-chip{display:flex;align-items:center;gap:8px;background:var(--card-bg);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-size:.85rem}
+  .seo-chip .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .seo-chip.ok .dot{background:var(--ok)}
+  .seo-chip.fail .dot{background:var(--fail)}
+  td.seo-val{font-size:.82rem;color:var(--muted)}
+  td.seo-val .txt{color:var(--ink);display:block;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .badge.warn{background:#fff4e0;color:#9a6400}
+
   .page-card{background:var(--card-bg);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px}
   .page-card .page-url{font-weight:600;font-size:.92rem;margin-bottom:12px;word-break:break-all}
   .page-card .page-url a{color:var(--ink);text-decoration:none}
@@ -126,6 +135,58 @@
         {% for u in excluded_urls %}<li>{{ u }}</li>{% endfor %}
       </ul>
     </details>
+  </section>
+  {% endif %}
+
+  {% if seo_pages %}
+  <section>
+    <h2>SEO &amp; indexace</h2>
+
+    <div class="seo-site">
+      <div class="seo-chip {{ 'ok' if seo_site.robots_ok and not seo_site.robots_blocks_all else 'fail' }}">
+        <span class="dot"></span>
+        {% if not seo_site.robots_ok %}robots.txt nenalezen
+        {% elif seo_site.robots_blocks_all %}robots.txt blokuje CELÝ web!
+        {% else %}robots.txt v pořádku{% endif %}
+      </div>
+      <div class="seo-chip {{ 'ok' if seo_site.sitemap_ok else 'fail' }}">
+        <span class="dot"></span>
+        {{ 'sitemap.xml nalezen' if seo_site.sitemap_ok else 'sitemap.xml nenalezen' }}
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Stránka</th><th>Title</th><th>Meta popis</th><th>H1</th><th>Indexace</th></tr>
+      </thead>
+      <tbody>
+        {% for p in seo_pages %}
+        <tr>
+          <td class="url"><a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.url }}</a></td>
+          <td class="seo-val">
+            {% if p.title %}
+              <span class="txt" title="{{ p.title }}">{{ p.title }}</span>
+              <span class="badge {{ 'ok' if p.title_ok else 'warn' }}">{{ p.title_len }} znaků</span>
+            {% else %}<span class="badge fail">chybí title</span>{% endif %}
+          </td>
+          <td class="seo-val">
+            {% if p.description %}
+              <span class="txt" title="{{ p.description }}">{{ p.description }}</span>
+              <span class="badge {{ 'ok' if p.description_ok else 'warn' }}">{{ p.description_len }} znaků</span>
+            {% else %}<span class="badge fail">chybí popis</span>{% endif %}
+          </td>
+          <td class="seo-val"><span class="badge {{ 'ok' if p.h1_ok else 'warn' }}">{{ p.h1_count }}×</span></td>
+          <td class="seo-val">
+            {% if p.noindex %}<span class="badge fail">noindex!</span>{% else %}<span class="badge ok">indexovatelná</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p style="color:var(--muted);font-size:.78rem;margin-top:10px">
+      Doporučené délky: title {{ "%d–%d"|format(10, 60) }} znaků, meta popis 50–160 znaků, přesně jedno H1 na stránku.
+      Kontrola proběhla na nejnavštěvovanějších stránkách webu (stejná sada jako screenshoty).
+    </p>
   </section>
   {% endif %}
 

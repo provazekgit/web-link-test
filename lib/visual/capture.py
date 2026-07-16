@@ -122,6 +122,9 @@ _COOKIE_BANNER_SELECTORS = [
     "iubenda-cs-banner", "#iubenda-cs-banner",
     "[data-testid='cookie-banner']",
     "#cookie-bar", ".cookie-bar", ".cookie-banner", "#cookiebanner", ".cookie-alert",
+    # Real Cookie Banner (devowl.io) – oblíbený v ČR/SRN, umí se vykreslovat
+    # přes shadow DOM (viz _COOKIE_HEURISTIC_JS níže, kam se CSS nedostane)
+    "real-cookie-banner", "#real-cookie-banner", "#rcb-consent-mask",
 ]
 
 _COOKIE_HIDE_CSS = ", ".join(_COOKIE_BANNER_SELECTORS) + """ {
@@ -136,21 +139,34 @@ html, body {
 """
 
 # JS heuristika jako záchranná síť pro neznámé/vlastní cookie lišty:
-# skryje pevně/lepivě umístěné panely s textem o cookies/GDPR.
+# skryje pevně/lepivě umístěné panely s textem o cookies/GDPR. Prochází i
+# otevřené shadow root uzly (weby jako "Real Cookie Banner" si lištu
+# vykreslují přes shadow DOM, kam běžné document.querySelectorAll ani
+# vložené CSS nedosáhnou – jediné, co tam funguje, je inline style
+# nastavený přímo na daný element skrze JS).
 _COOKIE_HEURISTIC_JS = r"""
 () => {
-  const rx = /cookie|souhlas|gdpr|osobn(í|i)ch? údaj|zásady ochrany/i;
-  const nodes = document.querySelectorAll('body *');
-  for (const el of nodes) {
+  const rx = /cookie|souhlas|gdpr|osobn(í|i)ch? údaj|zásady ochrany|přijmout|odmítnout|personalizace/i;
+  const hide = (el) => {
     try {
       const style = window.getComputedStyle(el);
       if ((style.position === 'fixed' || style.position === 'sticky') &&
-          el.offsetHeight > 0 && el.offsetHeight < 600 &&
-          rx.test(el.innerText || '')) {
+          el.offsetHeight > 0 && el.offsetHeight < 2000 &&
+          rx.test(el.innerText || el.textContent || '')) {
         el.style.setProperty('display', 'none', 'important');
+        return true;
       }
     } catch (e) { /* ignore */ }
-  }
+    return false;
+  };
+  const walk = (root) => {
+    const nodes = root.querySelectorAll('*');
+    for (const el of nodes) {
+      hide(el);
+      if (el.shadowRoot) walk(el.shadowRoot);
+    }
+  };
+  walk(document);
 }
 """
 

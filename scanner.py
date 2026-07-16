@@ -171,6 +171,8 @@ def write_report(
     excluded_urls: Optional[List[str]] = None,
     screenshots: Optional[List[Dict[str, str]]] = None,
     duration_sec: Optional[float] = None,
+    seo_pages: Optional[List[Dict[str, object]]] = None,
+    seo_site: Optional[Dict[str, object]] = None,
 ) -> str:
     """Zapíše report.json a index.html do už existující `job_dir`
     (viz `make_job_dir`) – screenshoty do ní ukládá volající ještě předtím."""
@@ -179,6 +181,8 @@ def write_report(
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     excluded_urls = excluded_urls or []
     screenshots = screenshots or []
+    seo_pages = seo_pages or []
+    seo_site = seo_site or {}
 
     # JSON výstup (necháváme surové hodnoty pro další zpracování)
     with open(os.path.join(job_dir, "report.json"), "w", encoding="utf-8") as f:
@@ -189,6 +193,8 @@ def write_report(
                 "rows": rows,
                 "excluded": excluded_urls,
                 "screenshots": screenshots,
+                "seo_pages": seo_pages,
+                "seo_site": seo_site,
             },
             f,
             ensure_ascii=False,
@@ -258,6 +264,8 @@ def write_report(
         excluded_urls=excluded_urls,
         pages_gallery=pages_gallery,
         duration_text=duration_text,
+        seo_pages=seo_pages,
+        seo_site=seo_site,
     )
 
     with open(os.path.join(job_dir, "index.html"), "w", encoding="utf-8") as f:
