@@ -56,3 +56,8 @@ def fmt_ms(ms: int, sep: str = " ") -> str:
     except Exception:
         s = str(ms)
     return s
+
+def fmt_duration(seconds: float) -> str:
+    """Formátuje dobu trvání v sekundách jako '4 min 52 s' / '33 s'."""
+    mins, secs = divmod(int(seconds), 60)
+    return f"{mins} min {secs:02d} s" if mins else f"{secs} s"

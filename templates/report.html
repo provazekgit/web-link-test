@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<title>Report kontroly webu – {{ base_url }}</title>
+<style>
+  :root{
+    --ok:#0a8a4a; --ok-bg:#eafbf1; --fail:#c0272d; --fail-bg:#fdecec;
+    --ink:#1c2430; --muted:#5b6472; --line:#e4e7ec; --brand:#2454ff; --card-bg:#ffffff; --page-bg:#f4f6f9;
+  }
+  *{box-sizing:border-box}
+  body{
+    font-family:"Segoe UI",system-ui,Arial,sans-serif;margin:0;padding:0;
+    background:var(--page-bg);color:var(--ink);
+  }
+  .wrap{max-width:1100px;margin:0 auto;padding:32px 24px 60px}
+  header.top{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:24px}
+  header.top h1{font-size:1.5rem;margin:0 0 4px}
+  header.top .meta{color:var(--muted);font-size:.92rem;line-height:1.5}
+  header.top .meta a{color:var(--brand);text-decoration:none}
+  header.top .badge-brand{background:var(--brand);color:#fff;padding:6px 14px;border-radius:999px;font-size:.8rem;font-weight:600;white-space:nowrap}
+
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:28px}
+  .stat{background:var(--card-bg);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+  .stat .num{font-size:1.6rem;font-weight:700;line-height:1.1}
+  .stat .label{color:var(--muted);font-size:.8rem;margin-top:4px}
+  .stat.ok .num{color:var(--ok)}
+  .stat.fail .num{color:var(--fail)}
+
+  section{margin-bottom:32px}
+  h2{font-size:1.15rem;margin:0 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line)}
+
+  table{border-collapse:collapse;width:100%;background:var(--card-bg);border-radius:12px;overflow:hidden;box-shadow:0 1px 2px rgba(20,25,35,.05)}
+  th,td{padding:9px 12px;text-align:left;font-size:.9rem;border-bottom:1px solid var(--line)}
+  th{background:#fafbfc;color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.03em}
+  tr:last-child td{border-bottom:none}
+  td.url a{color:var(--ink);text-decoration:none;word-break:break-all}
+  td.url a:hover{color:var(--brand);text-decoration:underline}
+  .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-weight:700;font-size:.78rem}
+  .badge.ok{background:var(--ok-bg);color:var(--ok)}
+  .badge.fail{background:var(--fail-bg);color:var(--fail)}
+  td.err{color:var(--fail);font-size:.8rem}
+
+  .excluded-box{background:#fff9e8;border:1px solid #f2dfa0;border-radius:12px;padding:14px 18px;font-size:.88rem;color:#6b5300}
+  .excluded-box summary{cursor:pointer;font-weight:600;color:#6b5300}
+  .excluded-box ul{margin:10px 0 0;padding-left:20px;max-height:220px;overflow:auto}
+  .excluded-box li{word-break:break-all;margin-bottom:2px}
+
+  .page-card{background:var(--card-bg);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+  .page-card .page-url{font-weight:600;font-size:.92rem;margin-bottom:12px;word-break:break-all}
+  .page-card .page-url a{color:var(--ink);text-decoration:none}
+  .page-card .page-url a:hover{color:var(--brand)}
+  .shots{display:flex;flex-wrap:wrap;gap:12px}
+  .shot{width:150px;text-align:center}
+  .shot img{width:100%;height:110px;object-fit:cover;object-position:top;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;display:block;background:#f0f1f3}
+  .shot .dev{font-size:.72rem;color:var(--muted);margin-top:4px}
+
+  #lightbox{display:none;position:fixed;inset:0;background:rgba(10,14,20,.86);z-index:999;align-items:center;justify-content:center;padding:24px;cursor:zoom-out}
+  #lightbox.open{display:flex}
+  #lightbox img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.5)}
+
+  footer{color:var(--muted);font-size:.8rem;text-align:center;margin-top:40px}
+
+  @media print{
+    body{background:#fff}
+    .shot img{cursor:default}
+    #lightbox{display:none !important}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1>Report kontroly webu</h1>
+      <div class="meta">
+        <b>Testovaný web:</b> <a href="{{ base_url }}" target="_blank" rel="noopener">{{ base_url }}</a><br>
+        <b>Vygenerováno:</b> {{ generated_display }}{% if duration_text %} · <b>doba testu:</b> {{ duration_text }}{% endif %}
+      </div>
+    </div>
+    <div class="badge-brand">Automatický test odkazů &amp; vzhledu</div>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><div class="num">{{ total }}</div><div class="label">Zkontrolováno stránek</div></div>
+    <div class="stat ok"><div class="num">{{ ok_count }}</div><div class="label">Funguje bez problémů</div></div>
+    <div class="stat fail"><div class="num">{{ failed }}</div><div class="label">Vyžaduje pozornost</div></div>
+    <div class="stat"><div class="num">{{ fmt_ms(avg_ms) }} ms</div><div class="label">Průměrná odezva</div></div>
+    {% if excluded_urls %}
+    <div class="stat"><div class="num">{{ excluded_urls|length }}</div><div class="label">Vynecháno (přihlášení)</div></div>
+    {% endif %}
+  </div>
+
+  <section>
+    <h2>Přehled stránek</h2>
+    <table>
+      <thead>
+        <tr><th>URL</th><th>Stav</th><th>Odezva</th><th>Poznámka</th></tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        {% set is_fail = (r.status == -1 or r.status >= 400) %}
+        <tr>
+          <td class="url"><a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.url }}</a></td>
+          <td>
+            {% if is_fail %}
+              <span class="badge fail">{{ r.status if r.status != -1 else 'CHYBA' }}</span>
+            {% else %}
+              <span class="badge ok">{{ r.status }} OK</span>
+            {% endif %}
+          </td>
+          <td>{{ fmt_ms(r.ms, ' ') }} ms</td>
+          <td class="err">{{ r.error }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  {% if excluded_urls %}
+  <section>
+    <details class="excluded-box">
+      <summary>{{ excluded_urls|length }} stránka(y) záměrně vynechána z testu – vyžadují přihlášení / košík / administraci</summary>
+      <ul>
+        {% for u in excluded_urls %}<li>{{ u }}</li>{% endfor %}
+      </ul>
+    </details>
+  </section>
+  {% endif %}
+
+  {% if pages_gallery %}
+  <section>
+    <h2>Screenshoty</h2>
+    {% for page in pages_gallery %}
+    <div class="page-card">
+      <div class="page-url">
+        {% if page.url %}<a href="{{ page.url }}" target="_blank" rel="noopener">{{ page.url }}</a>{% else %}Ostatní snímky{% endif %}
+      </div>
+      <div class="shots">
+        {% for s in page.shots %}
+        <div class="shot">
+          <img src="{{ s.rel }}" alt="{{ s.device }}" loading="lazy" onclick="openLightbox('{{ s.rel }}')">
+          <div class="dev">{{ s.device }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <footer>Vygenerováno automatickým nástrojem pro kontrolu odkazů a vzhledu webu.</footer>
+</div>
+
+<div id="lightbox" onclick="closeLightbox()"><img id="lightboxImg" src="" alt=""></div>
+<script>
+  function openLightbox(src){
+    document.getElementById('lightboxImg').src = src;
+    document.getElementById('lightbox').classList.add('open');
+  }
+  function closeLightbox(){
+    document.getElementById('lightbox').classList.remove('open');
+  }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+</script>
+</body>
+</html>

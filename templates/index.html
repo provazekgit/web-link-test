@@ -65,21 +65,15 @@
     <button type="submit">Spustit test</button>
   </form>
 
-  <div id="resultBox" class="result-box {{ 'show' if r.estimate }}">>
-  {% if result %}
-    <div><strong>Souhrn:</strong> zkontrolováno stránek: <strong>{{ result.pages }}</strong>,
-      vytvořených screenshotů: <strong>{{ result.screens }}</strong></div>
-    <div style="margin-top:.6rem">
-      <a href="{{ result.report_url }}">➡ Otevřít kompletní report</a>
-    </div>
-  {% endif %}
-   <hr>
+  <div id="resultBox" class="result-box {{ 'show' if r.estimate }}">
     {% if r.estimate %}
         <div><strong>Souhrn:</strong> zkontrolováno stránek: <strong>{{ r.pages }}</strong>,
-          vytvořených screenshotů: <strong>{{ r.screens }}</strong></div>
+          vytvořených screenshotů: <strong>{{ r.screens }}</strong>{% if r.excluded %},
+          vynecháno (vyžadují přihlášení): <strong>{{ r.excluded }}</strong>{% endif %}</div>
 
         <div style="margin-top:.4rem">
-          ⏱ <strong>Odhadovaný čas testu:</strong> {{ r.estimate }}
+          ⏱ <strong>Skutečná doba testu:</strong> {{ r.duration }}
+          <span class="muted">(odhad před spuštěním: {{ r.estimate }})</span>
         </div>
 
         <div style="margin-top:.6rem">
