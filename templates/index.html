@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <title>Link Test</title>
+  <style>
+    body{font-family:system-ui,Arial,sans-serif;padding:24px;max-width:800px;margin:auto}
+    label{display:block;margin-top:10px}
+    input{width:100%;padding:8px}
+    button{margin-top:14px;padding:10px 16px;font-weight:700}
+    .muted{color:#666}
+    code{background:#f4f4f4;padding:2px 6px;border-radius:6px}
+    .run-status{display:none;align-items:center;gap:.6rem;margin:1rem 0;padding:.8rem 1rem;border:1px solid #ddd;border-radius:10px}
+    .run-status.running{display:flex;border-color:#999;background:#fafafa}
+    .spinner{width:16px;height:16px;border:3px solid #ccc;border-top:3px solid #333;border-radius:50%;animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .result-box{display:none;margin:1rem 0;padding:1rem 1.2rem;border:2px solid #0a7;border-radius:12px;background:#f4fff7}
+    .result-box.show{display:block}
+    .result-box a{font-weight:700;font-size:1.05rem;text-decoration:underline}
+
+  </style>
+</head>
+<body>
+  <h1>Kontrola odkazů</h1>
+  <p class="muted">Reporty se ukládají do: <code>{{ reports_root }}</code></p>
+    <div>
+      {% set r = result or {} %}
+    </div>
+  
+  <div id="runStatus" class="run-status">
+        <div class="spinner" aria-hidden="true"></div>
+    <div><strong>Test běží…</strong> Počkejte prosím na dokončení.</div>
+  </div>
+
+  <form method="post" action="/run">
+    <label>Base URL *</label>
+    <input name="base_url" placeholder="https://mojedomena.cz" required>
+
+    <label>Sitemap URL (volitelné)</label>
+    <input name="sitemap_url" placeholder="https://24s.cz/sitemap.xml">
+    <hr>
+<h3>Screenshoty (volitelné)</h3>
+<label><input type="checkbox" name="screenshots_enabled" value="1"> Udělat screenshoty</label>
+
+<p><b>Zařízení / prohlížeče</b> (vyber aspoň jedno):</p>
+<p><b>Zařízení / prohlížeče</b> (vyber aspoň jedno):</p>
+
+<label><input type="checkbox" name="devices" value="Desktop Chrome"> Desktop Chrome</label>
+<label><input type="checkbox" name="devices" value="Desktop Firefox"> Desktop Firefox</label>
+<label><input type="checkbox" name="devices" value="Desktop Edge"> Desktop Edge</label>
+<label><input type="checkbox" name="devices" value="Desktop Opera"> Desktop Opera</label>
+
+<label><input type="checkbox" name="devices" value="iPhone 13 Safari"> iPhone 13 Safari</label>
+<label><input type="checkbox" name="devices" value="iPad Mini Safari"> iPad Mini Safari</label>
+<label><input type="checkbox" name="devices" value="Android Chrome (Pixel 7)"> Android Chrome (Pixel 7)</label>
+<label><input type="checkbox" name="devices" value="Galaxy S23 Chrome"> Galaxy S23 Chrome</label>
+
+<label><input type="checkbox" name="devices" value="macOS Safari (Desktop)"> macOS Safari (Desktop)</label>
+<label><input type="checkbox" name="devices" value="macOS Chrome (Desktop)"> macOS Chrome (Desktop)</label>
+
+
+<p><b>URL pro screenshot (max 10)</b> – každé na nový řádek (může být i relativní, např. <code>/kontakt</code>):</p>
+<textarea name="screenshot_pages" rows="6" style="width:100%;"></textarea>
+
+    <button type="submit">Spustit test</button>
+  </form>
+
+  <div id="resultBox" class="result-box {{ 'show' if r.estimate }}">>
+  {% if result %}
+    <div><strong>Souhrn:</strong> zkontrolováno stránek: <strong>{{ result.pages }}</strong>,
+      vytvořených screenshotů: <strong>{{ result.screens }}</strong></div>
+    <div style="margin-top:.6rem">
+      <a href="{{ result.report_url }}">➡ Otevřít kompletní report</a>
+    </div>
+  {% endif %}
+   <hr>
+    {% if r.estimate %}
+        <div><strong>Souhrn:</strong> zkontrolováno stránek: <strong>{{ r.pages }}</strong>,
+          vytvořených screenshotů: <strong>{{ r.screens }}</strong></div>
+
+        <div style="margin-top:.4rem">
+          ⏱ <strong>Odhadovaný čas testu:</strong> {{ r.estimate }}
+        </div>
+
+        <div style="margin-top:.6rem">
+          <a href="{{ r.report_url }}">➡ Otevřít kompletní report</a>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+  const form = document.querySelector('form');
+  const runStatus = document.getElementById('runStatus');
+  if (form && runStatus) {
+    form.addEventListener('submit', () => {
+      runStatus.classList.add('running');
+    });
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+kk-link-test/
+  app.py
+  scanner.py
+  pdf_render.py
+  utils.py
+  lib/
+    __init__.py        ← vytvoř prázdný soubor, pokud chybí
+    http_client.py
+    url_utils.py
+    crawl.py
+    sitemap.py
+    visual.py
+  templates/
+    index.html         ← přesuň sem svůj index.html, ať funguje render_template
+  reports/
+
+
+lib/
+  visual/
+    __init__.py         # veřejné API (exporty)
+    capture.py          # hlavní logika screenshotů
+    sanitize.py         # čištění názvů, timestamp
+    pathing.py          # práce s cestami (\\?\ prefix na Win, tvorba cílové cesty)
+
+lib/
+  __init__.py
+  app.py
+  crawl.py
+  http_client.py
+  scanner.py
+  sitemap.py
+  url_utils.py
+  utils.py
+  visual/
+    __init__.py
+    capture.py
+    sanitize.py
+    pathing.py
