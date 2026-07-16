@@ -1,14 +1,20 @@
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, Tuple
 import time
 import datetime
 from urllib.parse import urlparse
 import os
 import json
 
-from utils import fmt_ms
+from utils import fmt_ms, fmt_duration
 from lib.crawl import crawl_bfs
-from lib.url_utils import same_domain, norm_url
+from lib.url_utils import same_domain, norm_url, is_excluded_path
 from lib.http_client import head, get_html, HTTP_TIMEOUT
+
+# Kolik souběžných požadavků smí test posílat na testovaný web najednou
+# a jaká prodleva se drží mezi jednotlivými požadavky – aby test web
+# zbytečně nezatěžoval. Lze doladit přes .env.
+MAX_CONCURRENT_REQUESTS = max(1, int(os.getenv("MAX_CONCURRENT_REQUESTS", "4")))
+REQUEST_DELAY_MS = int(os.getenv("REQUEST_DELAY_MS", "250"))
 
 
 def _parse_sitemap_xml(xml_text: str) -> List[str]:
@@ -24,16 +30,23 @@ def _load_url_text(url: str) -> str:
     r.raise_for_status()
     return r.text
 
-def collect_links(base_url: str, sitemap_url: Optional[str] = None, max_pages: int = 300) -> List[str]:
+def collect_links(base_url: str, sitemap_url: Optional[str] = None, max_pages: int = 300) -> Tuple[List[str], List[str]]:
     """
     1) Pokud je k dispozici sitemap URL:
        - načte sitemapu
        - pokud je to index (obsahuje další sitemapy), načte i ty
        - vybere pouze URL ze stejné domény
     2) Jinak fallback: BFS crawl do hloubky 2 (homepage + interní odkazy)
+
+    Stránky vyžadující přihlášení (košík, login, účet, admin…) se do testu
+    automaticky nezařazují – jen se vrátí zvlášť v `excluded`, aby o nich
+    šlo klienta v reportu informovat.
+
+    Vrací dvojici (urls_k_otestovani, vyloučené_urls).
     """
     base_url = norm_url(base_url)
     found: Set[str] = set([base_url])
+    excluded: Set[str] = set()
 
     if sitemap_url:
         try:
@@ -48,7 +61,10 @@ def collect_links(base_url: str, sitemap_url: Optional[str] = None, max_pages: i
                         for u in _parse_sitemap_xml(t2):
                             u = norm_url(u)
                             if same_domain(u, base_url):
-                                found.add(u)
+                                if is_excluded_path(u):
+                                    excluded.add(u)
+                                else:
+                                    found.add(u)
                             if len(found) >= max_pages:
                                 break
                     except Exception:
@@ -60,7 +76,10 @@ def collect_links(base_url: str, sitemap_url: Optional[str] = None, max_pages: i
                 for u in locs:
                     u = norm_url(u)
                     if same_domain(u, base_url):
-                        found.add(u)
+                        if is_excluded_path(u):
+                            excluded.add(u)
+                        else:
+                            found.add(u)
                     if len(found) >= max_pages:
                         break
         except Exception:
@@ -71,22 +90,26 @@ def collect_links(base_url: str, sitemap_url: Optional[str] = None, max_pages: i
     if len(found) < 2:  # sitemap nic nepřinesla → crawl
         seed = set()
         try:
-            seed = crawl_bfs(base_url, seed=set(), max_pages=max_pages, max_depth=2)
+            crawled, crawled_excluded = crawl_bfs(base_url, seed=set(), max_pages=max_pages, max_depth=2)
         except Exception:
-            seed = set()
-        for u in seed:
+            crawled, crawled_excluded = set(), set()
+        for u in crawled:
             if same_domain(u, base_url):
                 found.add(u)
             if len(found) >= max_pages:
                 break
+        excluded |= crawled_excluded
 
-    return sorted(found)
+    return sorted(found), sorted(excluded)
 
 def check_links(urls: List[str]) -> List[Dict[str, object]]:
-    import time
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     def probe(u: str) -> Dict[str, object]:
+        # zdvořilá prodleva, aby souběžné dotazy web zbytečně nezahltily
+        if REQUEST_DELAY_MS:
+            time.sleep(REQUEST_DELAY_MS / 1000)
+
         start = time.time()
         status = -1
         err = ""
@@ -114,7 +137,7 @@ def check_links(urls: List[str]) -> List[Dict[str, object]]:
         }
 
     rows: List[Dict[str, object]] = []
-    with ThreadPoolExecutor(max_workers=10) as ex:
+    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_REQUESTS) as ex:
         futures = [ex.submit(probe, u) for u in urls]
         for f in as_completed(futures):
             rows.append(f.result())
@@ -123,74 +146,116 @@ def check_links(urls: List[str]) -> List[Dict[str, object]]:
     return rows
 
 
-
-
-def write_report(report_root: str, base_url: str, rows: List[Dict[str, object]]) -> str:
+def make_job_dir(report_root: str, base_url: str) -> str:
+    """Založí (a rovnou i podsložku screens/) unikátní složku pro jeden běh testu,
+    aby do ní šlo ukládat screenshoty ještě předtím, než se zapíše report."""
     ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     host = (urlparse(base_url).hostname or "site").replace("/", "_")
     job_dir = os.path.join(report_root, f"{host}-{ts}")
-    os.makedirs(job_dir, exist_ok=True)
+    n = 1
+    unique_dir = job_dir
+    while os.path.exists(unique_dir):
+        n += 1
+        unique_dir = f"{job_dir}-{n}"
+    os.makedirs(os.path.join(unique_dir, "screens"))
+    return unique_dir
+
+
+def write_report(
+    job_dir: str,
+    base_url: str,
+    rows: List[Dict[str, object]],
+    excluded_urls: Optional[List[str]] = None,
+    screenshots: Optional[List[Dict[str, str]]] = None,
+    duration_sec: Optional[float] = None,
+) -> str:
+    """Zapíše report.json a index.html do už existující `job_dir`
+    (viz `make_job_dir`) – screenshoty do ní ukládá volající ještě předtím."""
+    from flask import render_template
+
+    ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    excluded_urls = excluded_urls or []
+    screenshots = screenshots or []
 
     # JSON výstup (necháváme surové hodnoty pro další zpracování)
     with open(os.path.join(job_dir, "report.json"), "w", encoding="utf-8") as f:
-        json.dump({"base_url": base_url, "generated_at": ts, "rows": rows}, f, ensure_ascii=False, indent=2)
+        json.dump(
+            {
+                "base_url": base_url,
+                "generated_at": ts,
+                "rows": rows,
+                "excluded": excluded_urls,
+                "screenshots": screenshots,
+            },
+            f,
+            ensure_ascii=False,
+            indent=2,
+        )
 
-    ok_count = sum(1 for r in rows if r["status"] != -1 and r["status"] < 400)
     total = len(rows)
+    ok_count = sum(1 for r in rows if r["status"] != -1 and r["status"] < 400)
     failed = total - ok_count
+    avg_ms = int(sum(r["ms"] for r in rows) / total) if total else 0
 
-    # řádky tabulky
-    rows_html = "\n".join(
-        f"<tr class='{'fail' if (r['status']==-1 or r['status']>=400) else 'ok'}'>"
-        f"<td><a href='{r['url']}' target='_blank'>{r['url']}</a></td>"
-        f"<td class='status'>{r['status']} {'<span style=\"color:green\">OK</span>' if r['status'] == 200 else ''}</td>"
-        f"<td><small style='color:#f2f3f4'>{fmt_ms(r['ms'], sep='  ')}</small></td>"
-        f"<td>{r['error']}</td></tr>"
-        for r in rows
+    # nejdřív chyby (nejdůležitější pro klienta), pak OK podle URL
+    sorted_rows = sorted(
+        rows,
+        key=lambda r: (0 if (r["status"] == -1 or r["status"] >= 400) else 1, r["url"]),
     )
 
-    # blok náhledů screenshotů (pokud existují)
-    screens_block = ""
-    try:
-        screens_dir = os.path.join(job_dir, "screens")
-        if os.path.isdir(screens_dir):
-            items = []
-            for name in sorted(os.listdir(screens_dir)):
-                if name.lower().endswith(".png"):
-                    rel = f"screens/{name}"
-                    items.append(
-                        f"<div style='display:inline-block;margin:6px;text-align:center'>"
-                        f"<a href='{rel}' target='_blank'><img src='{rel}' style='height:180px;border:1px solid #ccc'></a>"
-                        f"<div style='font-size:12px;color:#444'>{name}</div></div>"
-                    )
-            if items:
-                screens_block = "<h2>Screenshots</h2>" + "".join(items)
-    except Exception:
-        pass
+    # seskupení screenshotů podle stránky (z manifestu, který vrací screenshot_pages)
+    pages_gallery: "list[dict]" = []
+    by_url: "dict[str, list[dict]]" = {}
+    order: List[str] = []
+    for shot in screenshots:
+        u = shot.get("url", "")
+        if u not in by_url:
+            by_url[u] = []
+            order.append(u)
+        by_url[u].append(
+            {
+                "device": shot.get("device", ""),
+                "file": shot.get("file", ""),
+                "rel": f"screens/{shot.get('file', '')}",
+            }
+        )
+    for u in order:
+        pages_gallery.append({"url": u, "shots": by_url[u]})
 
-    # HTML report
-    html = f"""<!doctype html>
-<html lang="cs"><head><meta charset="utf-8">
-<title>Report {ts}</title>
-<style>
-body{{font-family:system-ui,Arial,sans-serif;max-width:1100px;margin:auto;padding:24px}}
-table{{border-collapse:collapse;width:100%}} td,th{{border:1px solid #ddd;padding:6px 8px}}
-tr.fail{{background:#ffecec}} tr.ok{{background:#f5fff0}}
-code{{background:#f4f4f4;padding:2px 6px;border-radius:6px}}
-.status span{{font-weight:600}}
-</style></head><body>
-<h1>Report</h1>
-<p><b>Base:</b> <a href="{base_url}" target="_blank">{base_url}</a><br>
-<b>Vygenerováno:</b> {ts}<br>
-<b>Celkem URL:</b> {total} · <b>OK:</b> {ok_count} · <b>Fail:</b> {failed}</p>
-<table>
-  <thead><tr><th>URL</th><th>Status</th><th><small style='color:#fff'>Čas [ms]</small></th><th>Chyba</th></tr></thead>
-  <tbody>
-    {rows_html}
-  </tbody>
-</table>
-{screens_block}
-</body></html>"""
+    # doplnění osiřelých souborů (kdyby manifest z nějakého důvodu chyběl)
+    known_files = {s["file"] for shots in by_url.values() for s in shots}
+    screens_dir = os.path.join(job_dir, "screens")
+    if os.path.isdir(screens_dir):
+        orphans = sorted(
+            name for name in os.listdir(screens_dir)
+            if name.lower().endswith(".png") and name not in known_files
+        )
+        if orphans:
+            pages_gallery.append(
+                {
+                    "url": None,
+                    "shots": [{"device": "", "file": n, "rel": f"screens/{n}"} for n in orphans],
+                }
+            )
+
+    duration_text = fmt_duration(duration_sec) if duration_sec is not None else None
+
+    generated_display = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
+
+    html = render_template(
+        "report.html",
+        base_url=base_url,
+        generated_display=generated_display,
+        total=total,
+        ok_count=ok_count,
+        failed=failed,
+        avg_ms=avg_ms,
+        fmt_ms=fmt_ms,
+        rows=sorted_rows,
+        excluded_urls=excluded_urls,
+        pages_gallery=pages_gallery,
+        duration_text=duration_text,
+    )
 
     with open(os.path.join(job_dir, "index.html"), "w", encoding="utf-8") as f:
         f.write(html)

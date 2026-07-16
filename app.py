@@ -1,30 +1,18 @@
 # app.py
 import os
+import time
 import traceback
 from flask import Flask, render_template, request, send_from_directory
 from dotenv import load_dotenv
-from utils import requires_auth
+from utils import requires_auth, fmt_duration
 import scanner
+from lib.url_utils import canonical_url as _canonical_url
 from pdf_render import html_to_pdf
-from urllib.parse import urlparse, urlunparse, urljoin
+from urllib.parse import urlparse, urljoin
 
 # ---------------------------------------------------------------
 # Pomocné funkce
 # ---------------------------------------------------------------
-
-def _canonical_url(u: str) -> str:
-    """Zjednodušená forma URL pro porovnávání (bez query, bez index.html)."""
-    p = urlparse(u)
-    scheme = p.scheme or "https"
-    netloc = (p.netloc or "").lower()
-    path = p.path or "/"
-    if path != "/" and path.endswith("/"):
-        path = path.rstrip("/")
-    for idx in ("index.html", "index.htm", "index.php", "default.asp"):
-        if path.lower().endswith("/" + idx):
-            path = path[:-(len(idx) + 1)] or "/"
-            break
-    return urlunparse((scheme, netloc, path, "", "", ""))
 
 def _count_pngs(folder: str) -> int:
     """Spočítá počet screenshotů (PNG) ve složce."""
@@ -80,6 +68,8 @@ def index():
 @app.post("/run")
 @requires_auth
 def run():
+    started_at = time.time()
+
     base_url = request.form.get("base_url", "").strip()
     sitemap = request.form.get("sitemap_url", "").strip() or None
 
@@ -90,21 +80,22 @@ def run():
     if sitemap:
         sitemap = _with_scheme(sitemap)
 
-    # --- 1) Získání a testování odkazů ---
-    urls = scanner.collect_links(base_url, sitemap)
+    # --- 1) Získání a testování odkazů (stránky vyžadující přihlášení
+    #         se automaticky vynechávají – košík, login, účet, admin…) ---
+    urls, excluded_urls = scanner.collect_links(base_url, sitemap)
     rows = scanner.check_links(urls)
     tested_urls = list({row["url"] for row in rows})
     pages_count = len(tested_urls)
 
     # --- 2) Výpočet odhadu času (základ) ---
     estimate_sec = pages_count * CHECK_PER_PAGE_SEC
+    screens_manifest = []
+    top_seen = set()
 
-    # --- 3) Zápis reportu ---
-    job_dir = scanner.write_report(REPORTS_ROOT, base_url, rows)
+    # --- 3) Založ finální složku reportu a screenshoty ukládej rovnou tam ---
+    job_dir = scanner.make_job_dir(REPORTS_ROOT, base_url)
     screens_dir = os.path.join(job_dir, "screens")
-    os.makedirs(screens_dir, exist_ok=True)
 
-    # --- 4) Automatické screenshoty (TOP 5 + různá zařízení) ---
     try:
         from lib.visual import screenshot_pages
 
@@ -122,18 +113,19 @@ def run():
         )
 
         print(f"[screenshots:auto] start → {top_pages}")
-        screenshot_pages(
+        manifest = screenshot_pages(
             base_url=base_url,
             pages=top_pages,
             out_dir=screens_dir,
             selected_devices=auto_devices,
         )
+        screens_manifest.extend(manifest or [])
         print("[screenshots:auto] done")
     except Exception as e:
         print(f"[screenshots:auto] přeskočeno: {e}")
         traceback.print_exc()
 
-    # --- 5) Uživatelské screenshoty (z formuláře) ---
+    # --- 4) Uživatelské screenshoty (z formuláře) ---
     try:
         do_screens = request.form.get("screenshots_enabled") == "1"
         raw = (request.form.get("screenshot_pages", "") or "").strip()
@@ -155,18 +147,30 @@ def run():
                 )
 
                 print(f"[screenshots:user] start → {pages} | devices={devices}")
-                screenshot_pages(
+                manifest = screenshot_pages(
                     base_url=base_url,
                     pages=pages,
                     out_dir=screens_dir,
                     selected_devices=devices,
                 )
+                screens_manifest.extend(manifest or [])
                 print("[screenshots:user] done")
         else:
             print(f"[screenshots:user] skip → enabled={do_screens}, raw='{bool(raw)}', devices={devices}")
     except Exception as e:
         print(f"[screenshots:user] přeskočeno: {e}")
         traceback.print_exc()
+
+    # --- 5) Zápis reportu (obsahuje i seskupené screenshoty a vyloučené stránky) ---
+    duration_sec = time.time() - started_at
+    scanner.write_report(
+        job_dir,
+        base_url,
+        rows,
+        excluded_urls=excluded_urls,
+        screenshots=screens_manifest,
+        duration_sec=duration_sec,
+    )
 
     # --- 6) Vytvoření PDF z HTML reportu ---
     index_path = os.path.join(job_dir, "index.html")
@@ -178,9 +182,9 @@ def run():
 
     # --- 7) Výsledky ---
     screens_count = _count_pngs(screens_dir)
-    mins, secs = divmod(int(estimate_sec), 60)
-    estimate_text = f"{mins} min {secs:02d} s" if mins else f"{secs} s"
-    print(f"[info] Odhadovaný čas testu: {estimate_text}")
+    estimate_text = fmt_duration(estimate_sec)
+    duration_text = fmt_duration(duration_sec)
+    print(f"[info] Odhadovaný čas testu: {estimate_text} | skutečná doba: {duration_text}")
 
     rel = os.path.relpath(job_dir, REPORTS_ROOT).replace("\\", "/")
     report_url = f"/report/{rel}/index.html"
@@ -191,8 +195,10 @@ def run():
         result={
             "pages": pages_count,
             "screens": screens_count,
+            "excluded": len(excluded_urls),
             "report_url": report_url,
             "estimate": estimate_text,
+            "duration": duration_text,
         },
     )
 
