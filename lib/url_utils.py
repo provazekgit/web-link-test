@@ -63,16 +63,45 @@ _EXCLUDE_RE = (
     else None
 )
 
+# ---------------------------------------------------------------
+# Vyloučené přípony souborů (obrázky produktů, fonty, přímé odkazy na
+# soubory apod.) – to nejsou stránky k testování/screenshotům.
+# ---------------------------------------------------------------
+_DEFAULT_EXCLUDE_EXTENSIONS = [
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp", ".ico", ".avif", ".tiff",
+    ".css", ".js", ".woff", ".woff2", ".ttf", ".eot",
+]
+
+
+def _load_exclude_extensions() -> tuple[str, ...]:
+    """Načte seznam vyloučených přípon, lze přepsat/rozšířit přes .env
+    (stejná logika jako u EXCLUDE_KEYWORDS – prázdná hodnota = výchozí seznam)."""
+    override = (os.getenv("EXCLUDE_EXTENSIONS") or "").strip()
+    exts = (
+        [e.strip() for e in override.split(",") if e.strip()]
+        if override
+        else list(_DEFAULT_EXCLUDE_EXTENSIONS)
+    )
+    extra = os.getenv("EXTRA_EXCLUDE_EXTENSIONS", "")
+    exts += [e.strip() for e in extra.split(",") if e.strip()]
+    return tuple((e if e.startswith(".") else "." + e).lower() for e in exts)
+
+
+EXCLUDE_EXTENSIONS = _load_exclude_extensions()
+
 
 def is_excluded_path(u: str) -> bool:
     """Je URL stránka, kterou chceme z automatického testu vynechat –
     buď vyžaduje přihlášení (košík/pokladna/administrace), nebo to vůbec
     není skutečná stránka k testování (akční odkaz typu add-to-cart,
-    Cloudflare email-protection apod.)? Kontroluje cestu i query string,
-    protože právě tam bývá např. `?add-to-cart=1234`."""
+    Cloudflare email-protection, přímý odkaz na obrázek/soubor apod.)?
+    Kontroluje cestu i query string, protože právě tam bývá
+    např. `?add-to-cart=1234`."""
+    p = urlparse(u)
+    if EXCLUDE_EXTENSIONS and p.path.lower().endswith(EXCLUDE_EXTENSIONS):
+        return True
     if not _EXCLUDE_RE:
         return False
-    p = urlparse(u)
     path_and_query = p.path + (("?" + p.query) if p.query else "")
     return bool(_EXCLUDE_RE.search(path_and_query))
 
