@@ -1,9 +1,1 @@
-připojit se na sinology kk2 pro uložení reportu a spustit ve složce programu python app.py
 
-
-Running on http://127.0.0.1:8080
-
-BASIC_USER=adminkk
-BASIC_PASS=supergi
-
-REPORTS_DIR=\\192.168.0.202\reports (před spuštěním se přihlásit na server)
