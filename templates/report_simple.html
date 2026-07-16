@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="cs"><head><meta charset="utf-8">
+<title>Report {{ ts }}</title>
+<style>
+body{font-family:system-ui,Arial,sans-serif;max-width:1100px;margin:auto;padding:24px}
+table{border-collapse:collapse;width:100%} td,th{border:1px solid #ddd;padding:6px 8px}
+tr.fail{background:#ffecec} tr.ok{background:#f5fff0}
+code{background:#f4f4f4;padding:2px 6px;border-radius:6px}
+.status span{font-weight:600}
+</style></head><body>
+<h1>Report</h1>
+<p><b>Base:</b> <a href="{{ base_url }}" target="_blank">{{ base_url }}</a><br>
+<b>Vygenerováno:</b> {{ ts }}<br>
+<b>Celkem URL:</b> {{ total }} · <b>OK:</b> {{ ok_count }} · <b>Fail:</b> {{ failed }}</p>
+<table>
+  <thead><tr><th>URL</th><th>Status</th><th><small style="color:#fff">Čas [ms]</small></th><th>Chyba</th></tr></thead>
+  <tbody>
+    {% for r in rows %}
+    <tr class="{{ 'fail' if (r.status == -1 or r.status >= 400) else 'ok' }}">
+      <td><a href="{{ r.url }}" target="_blank">{{ r.url }}</a></td>
+      <td class="status">{{ r.status }} {% if r.status == 200 %}<span style="color:green">OK</span>{% endif %}</td>
+      <td><small style="color:#f2f3f4">{{ fmt_ms(r.ms, '  ') }}</small></td>
+      <td>{{ r.error }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% if screenshots %}
+<h2>Screenshots</h2>
+{% for s in screenshots %}
+<div style="display:inline-block;margin:6px;text-align:center">
+  <a href="{{ s.rel }}" target="_blank"><img src="{{ s.rel }}" style="height:180px;border:1px solid #ccc"></a>
+  <div style="font-size:12px;color:#444">{{ s.file }}</div>
+</div>
+{% endfor %}
+{% endif %}
+<p style="margin-top:30px"><a href="index.html">➡ Zobrazit novou vizuální verzi reportu (screenshoty podle stránky, SEO kontrola…)</a></p>
+</body></html>

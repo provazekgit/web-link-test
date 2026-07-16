@@ -208,6 +208,7 @@ def run():
 
     rel = os.path.relpath(job_dir, REPORTS_ROOT).replace("\\", "/")
     report_url = f"/report/{rel}/index.html"
+    simple_report_url = f"/report/{rel}/jednoduchy-report.html"
 
     return render_template(
         "index.html",
@@ -217,6 +218,7 @@ def run():
             "screens": screens_count,
             "excluded": len(excluded_urls),
             "report_url": report_url,
+            "simple_report_url": simple_report_url,
             "estimate": estimate_text,
             "duration": duration_text,
         },

@@ -78,6 +78,7 @@
 
         <div style="margin-top:.6rem">
           <a href="{{ r.report_url }}">➡ Otevřít kompletní report</a>
+          {% if r.simple_report_url %} · <a href="{{ r.simple_report_url }}">jednoduchá verze</a>{% endif %}
         </div>
     {% endif %}
 </div>

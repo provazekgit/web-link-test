@@ -211,7 +211,10 @@
   </section>
   {% endif %}
 
-  <footer>Vygenerováno automatickým nástrojem pro kontrolu odkazů a vzhledu webu.</footer>
+  <footer>
+    Vygenerováno automatickým nástrojem pro kontrolu odkazů a vzhledu webu.
+    {% if simple_report_url %}<br><a href="{{ simple_report_url }}">Zobrazit jednoduchou verzi reportu (prostá tabulka)</a>{% endif %}
+  </footer>
 </div>
 
 <div id="lightbox" onclick="closeLightbox()"><img id="lightboxImg" src="" alt=""></div>

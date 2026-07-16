@@ -266,9 +266,29 @@ def write_report(
         duration_text=duration_text,
         seo_pages=seo_pages,
         seo_site=seo_site,
+        simple_report_url="jednoduchy-report.html",
     )
 
     with open(os.path.join(job_dir, "index.html"), "w", encoding="utf-8") as f:
         f.write(html)
+
+    # Původní jednoduchá verze (prostá tabulka) – vedle nové, ne místo ní.
+    flat_screens = sorted(
+        [{"file": s.get("file", ""), "rel": f"screens/{s.get('file', '')}"} for s in screenshots],
+        key=lambda s: s["file"],
+    )
+    simple_html = render_template(
+        "report_simple.html",
+        base_url=base_url,
+        ts=ts,
+        total=total,
+        ok_count=ok_count,
+        failed=failed,
+        fmt_ms=fmt_ms,
+        rows=sorted_rows,
+        screenshots=flat_screens,
+    )
+    with open(os.path.join(job_dir, "jednoduchy-report.html"), "w", encoding="utf-8") as f:
+        f.write(simple_html)
 
     return job_dir
