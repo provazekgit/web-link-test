@@ -70,10 +70,24 @@
 
   footer{color:var(--muted);font-size:.8rem;text-align:center;margin-top:40px}
 
+  .pdf-controls{background:var(--card-bg);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:24px}
+  .pdf-controls .title{font-weight:600;font-size:.85rem;margin-bottom:10px}
+  .pdf-controls .opts{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+  .pdf-controls label{display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer}
+  .pdf-controls button{margin-left:auto;background:var(--brand);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:.85rem;font-weight:600;cursor:pointer}
+
+  /* skrytí sloupců/sekcí podle zaškrtávátek – platí i pro náhled, ne jen tisk */
+  body.hide-status .col-status{display:none}
+  body.hide-response .col-response{display:none}
+  body.hide-note .col-note{display:none}
+  body.hide-seo #section-seo{display:none}
+  body.hide-screens #section-screenshots{display:none}
+
   @media print{
     body{background:#fff}
     .shot img{cursor:default}
     #lightbox{display:none !important}
+    .no-print{display:none !important}
   }
 </style>
 </head>
@@ -91,6 +105,18 @@
     <div class="badge-brand">Automatický test odkazů &amp; vzhledu</div>
   </header>
 
+  <div class="pdf-controls no-print">
+    <div class="title">Co má obsahovat PDF (a náhled níže)</div>
+    <div class="opts">
+      <label><input type="checkbox" data-toggle="status" checked> Stav</label>
+      <label><input type="checkbox" data-toggle="response" checked> Odezva</label>
+      <label><input type="checkbox" data-toggle="note" checked> Poznámky</label>
+      {% if seo_pages %}<label><input type="checkbox" data-toggle="seo" checked> SEO</label>{% endif %}
+      {% if pages_gallery %}<label><input type="checkbox" data-toggle="screens" checked> Screenshoty</label>{% endif %}
+      <button type="button" onclick="window.print()">🖨 Stáhnout / vytisknout PDF</button>
+    </div>
+  </div>
+
   <div class="stats">
     <div class="stat"><div class="num">{{ total }}</div><div class="label">Zkontrolováno stránek</div></div>
     <div class="stat ok"><div class="num">{{ ok_count }}</div><div class="label">Funguje bez problémů</div></div>
@@ -105,22 +131,22 @@
     <h2>Přehled stránek</h2>
     <table>
       <thead>
-        <tr><th>URL</th><th>Stav</th><th>Odezva</th><th>Poznámka</th></tr>
+        <tr><th>URL</th><th class="col-status">Stav</th><th class="col-response">Odezva</th><th class="col-note">Poznámka</th></tr>
       </thead>
       <tbody>
         {% for r in rows %}
         {% set is_fail = (r.status == -1 or r.status >= 400) %}
         <tr>
           <td class="url"><a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.url }}</a></td>
-          <td>
+          <td class="col-status">
             {% if is_fail %}
               <span class="badge fail">{{ r.status if r.status != -1 else 'CHYBA' }}</span>
             {% else %}
               <span class="badge ok">{{ r.status }} OK</span>
             {% endif %}
           </td>
-          <td>{{ fmt_ms(r.ms, ' ') }} ms</td>
-          <td class="err">{{ r.error }}</td>
+          <td class="col-response">{{ fmt_ms(r.ms, ' ') }} ms</td>
+          <td class="col-note err">{{ r.error }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -139,7 +165,7 @@
   {% endif %}
 
   {% if seo_pages %}
-  <section>
+  <section id="section-seo">
     <h2>SEO &amp; indexace</h2>
 
     <div class="seo-site">
@@ -191,7 +217,7 @@
   {% endif %}
 
   {% if pages_gallery %}
-  <section>
+  <section id="section-screenshots">
     <h2>Screenshoty</h2>
     {% for page in pages_gallery %}
     <div class="page-card">
@@ -227,6 +253,12 @@
     document.getElementById('lightbox').classList.remove('open');
   }
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+
+  document.querySelectorAll('.pdf-controls input[data-toggle]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      document.body.classList.toggle('hide-' + cb.dataset.toggle, !cb.checked);
+    });
+  });
 </script>
 </body>
 </html>
