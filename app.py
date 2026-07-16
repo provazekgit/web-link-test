@@ -261,9 +261,10 @@ def _print_startup_report() -> bool:
     if AUTH_OFF:
         warnings.append("AUTH_OFF=1 – přihlašování je VYPNUTÉ (jen pro lokální vývoj!).")
     elif not BASIC_USER or not BASIC_PASS:
-        problems.append(
-            "V .env chybí BASIC_USER a/nebo BASIC_PASS. Doplň je "
-            "(nebo dočasně nastav AUTH_OFF=1 jen pro lokální test)."
+        warnings.append(
+            "V .env chybí BASIC_USER a/nebo BASIC_PASS – přihlašování je proto "
+            "VYPNUTÉ (kdokoliv se dostane dovnitř). Nastav je v .env, až budeš "
+            "chtít nástroj chránit."
         )
 
     reports_ok = _check_writable(REPORTS_ROOT)
@@ -289,7 +290,7 @@ def _print_startup_report() -> bool:
     elif BASIC_USER and BASIC_PASS:
         auth_line = f"zapnuto (uživatel: {BASIC_USER})"
     else:
-        auth_line = "CHYBÍ – viz níže"
+        auth_line = "vypnuto (v .env chybí BASIC_USER/BASIC_PASS)"
     print(f"  Přihlášení:        {auth_line}")
     print(f"  Reporty se ukládají do: {REPORTS_ROOT} {'✅' if reports_ok else '❌'}")
     print(f"  Screenshoty / PDF: {'✅ připraveno' if browser_ok else '❌ chybí Playwright prohlížeč'}")

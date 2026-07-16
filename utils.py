@@ -37,8 +37,10 @@ def _need_auth() -> Response:
 def requires_auth(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
-        # když chceš lokálně vypnout auth
-        if AUTH_OFF:
+        # když chceš lokálně vypnout auth, nebo dokud nejsou přihlašovací
+        # údaje v .env vůbec nastavené (ať appka jde hned vyzkoušet bez
+        # nutnosti cokoliv nejdřív ručně konfigurovat)
+        if AUTH_OFF or not BASIC_USER or not BASIC_PASS:
             return fn(*args, **kwargs)
 
         auth = request.authorization

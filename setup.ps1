@@ -53,7 +53,7 @@ python -m playwright install
 if (-not (Test-Path ".\.env")) {
     if (Test-Path ".\.env.example") {
         Copy-Item ".\.env.example" ".\.env"
-        Write-Host "[OK] Vytvoren .env z .env.example - dopln si v nem BASIC_USER a BASIC_PASS." -ForegroundColor Green
+        Write-Host "[OK] Vytvoren .env z .env.example (aplikace pobezi rovnou bez hesla)." -ForegroundColor Green
     } else {
         Write-Host "[POZOR] Soubor .env.example chybi, vytvor .env rucne." -ForegroundColor Yellow
     }
