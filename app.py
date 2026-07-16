@@ -79,6 +79,7 @@ def run():
 
     base_url = request.form.get("base_url", "").strip()
     sitemap = request.form.get("sitemap_url", "").strip() or None
+    footer_text = request.form.get("footer_text", "").strip() or None
 
     if not base_url:
         return "Zadej Base URL", 400
@@ -190,6 +191,7 @@ def run():
         duration_sec=duration_sec,
         seo_pages=seo_pages,
         seo_site=seo_site,
+        footer_text=footer_text,
     )
 
     # --- 7) Vytvoření PDF z HTML reportu ---

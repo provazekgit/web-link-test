@@ -173,6 +173,7 @@ def write_report(
     duration_sec: Optional[float] = None,
     seo_pages: Optional[List[Dict[str, object]]] = None,
     seo_site: Optional[Dict[str, object]] = None,
+    footer_text: Optional[str] = None,
 ) -> str:
     """Zapíše report.json a index.html do už existující `job_dir`
     (viz `make_job_dir`) – screenshoty do ní ukládá volající ještě předtím."""
@@ -267,6 +268,7 @@ def write_report(
         seo_pages=seo_pages,
         seo_site=seo_site,
         simple_report_url="jednoduchy-report.html",
+        footer_text=footer_text,
     )
 
     with open(os.path.join(job_dir, "index.html"), "w", encoding="utf-8") as f:
@@ -287,6 +289,7 @@ def write_report(
         fmt_ms=fmt_ms,
         rows=sorted_rows,
         screenshots=flat_screens,
+        footer_text=footer_text,
     )
     with open(os.path.join(job_dir, "jednoduchy-report.html"), "w", encoding="utf-8") as f:
         f.write(simple_html)
