@@ -120,9 +120,9 @@
 
   <div class="stats">
     <div class="stat"><div class="num">{{ total }}</div><div class="label">Zkontrolováno stránek</div></div>
-    <div class="stat ok"><div class="num">{{ ok_count }}</div><div class="label">Funguje bez problémů</div></div>
-    <div class="stat fail"><div class="num">{{ failed }}</div><div class="label">Vyžaduje pozornost</div></div>
-    <div class="stat"><div class="num">{{ fmt_ms(avg_ms) }} ms</div><div class="label">Průměrná odezva</div></div>
+    <div class="stat ok col-status"><div class="num">{{ ok_count }}</div><div class="label">Funguje bez problémů</div></div>
+    <div class="stat fail col-status"><div class="num">{{ failed }}</div><div class="label">Vyžaduje pozornost</div></div>
+    <div class="stat col-response"><div class="num">{{ fmt_ms(avg_ms) }} ms</div><div class="label">Průměrná odezva</div></div>
     {% if excluded_urls %}
     <div class="stat"><div class="num">{{ excluded_urls|length }}</div><div class="label">Vynecháno z testu</div></div>
     {% endif %}
@@ -184,7 +184,7 @@
 
     <table>
       <thead>
-        <tr><th>Stránka</th><th>Title</th><th>Meta popis</th><th>H1</th><th>Indexace</th></tr>
+        <tr><th>Stránka</th><th>Title</th><th>Meta popis</th><th>H1</th><th>Canonical</th><th>Indexace</th></tr>
       </thead>
       <tbody>
         {% for p in seo_pages %}
@@ -204,6 +204,16 @@
           </td>
           <td class="seo-val"><span class="badge {{ 'ok' if p.h1_ok else 'warn' }}">{{ p.h1_count }}×</span></td>
           <td class="seo-val">
+            {% if not p.canonical %}
+              <span class="badge fail">chybí</span>
+            {% elif p.canonical_matches %}
+              <span class="badge ok">na sebe</span>
+            {% else %}
+              <span class="txt" title="{{ p.canonical }}">{{ p.canonical }}</span>
+              <span class="badge warn">jiná stránka</span>
+            {% endif %}
+          </td>
+          <td class="seo-val">
             {% if p.noindex %}<span class="badge fail">noindex!</span>{% else %}<span class="badge ok">indexovatelná</span>{% endif %}
           </td>
         </tr>
@@ -212,6 +222,8 @@
     </table>
     <p style="color:var(--muted);font-size:.78rem;margin-top:10px">
       Doporučené délky: title {{ "%d–%d"|format(10, 60) }} znaků, meta popis 50–160 znaků, přesně jedno H1 na stránku.
+      Canonical „jiná stránka" nemusí být chyba (např. u filtrů/stránkování), ale stojí za kontrolu – může znamenat,
+      že Google indexuje jinou verzi stránky, než čekáte.
       Kontrola proběhla na nejnavštěvovanějších stránkách webu (stejná sada jako screenshoty).
     </p>
   </section>

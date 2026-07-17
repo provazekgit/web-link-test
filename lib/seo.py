@@ -10,6 +10,7 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 from lib.http_client import get_html, HTTP_TIMEOUT
+from lib.url_utils import canonical_url as _norm_url
 
 TITLE_MIN, TITLE_MAX = 10, 60
 DESC_MIN, DESC_MAX = 50, 160
@@ -21,7 +22,7 @@ def analyze_page(url: str) -> Dict[str, object]:
         "url": url, "title": None, "title_len": 0, "title_ok": False,
         "description": None, "description_len": 0, "description_ok": False,
         "h1_count": 0, "h1_ok": False,
-        "noindex": False, "canonical": None, "error": "",
+        "noindex": False, "canonical": None, "canonical_matches": None, "error": "",
     }
     try:
         r = get_html(url, timeout=HTTP_TIMEOUT)
@@ -53,7 +54,11 @@ def analyze_page(url: str) -> Dict[str, object]:
 
         canonical_tag = soup.find("link", attrs={"rel": "canonical"})
         if canonical_tag and canonical_tag.get("href"):
-            result["canonical"] = canonical_tag["href"]
+            canonical_abs = urljoin(url, canonical_tag["href"].strip())
+            result["canonical"] = canonical_abs
+            # ukazuje canonical sama na sebe, nebo na jinou stránku (časté
+            # zdroj duplicitního obsahu / omylem deindexované stránky)?
+            result["canonical_matches"] = _norm_url(canonical_abs) == _norm_url(url)
 
     except Exception as e:
         result["error"] = str(e)[:200]
