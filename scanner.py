@@ -174,6 +174,9 @@ def write_report(
     seo_pages: Optional[List[Dict[str, object]]] = None,
     seo_site: Optional[Dict[str, object]] = None,
     footer_text: Optional[str] = None,
+    footer_signature: Optional[str] = None,
+    footer_date: Optional[str] = None,
+    footer_color: Optional[str] = None,
 ) -> str:
     """Zapíše report.json a index.html do už existující `job_dir`
     (viz `make_job_dir`) – screenshoty do ní ukládá volající ještě předtím."""
@@ -184,6 +187,12 @@ def write_report(
     screenshots = screenshots or []
     seo_pages = seo_pages or []
     seo_site = seo_site or {}
+
+    if footer_date:
+        try:
+            footer_date = datetime.datetime.strptime(footer_date, "%Y-%m-%d").strftime("%d.%m.%Y")
+        except ValueError:
+            pass  # necháme jak přišlo (uživatel mohl zadat jiný formát)
 
     # JSON výstup (necháváme surové hodnoty pro další zpracování)
     with open(os.path.join(job_dir, "report.json"), "w", encoding="utf-8") as f:
@@ -269,6 +278,9 @@ def write_report(
         seo_site=seo_site,
         simple_report_url="jednoduchy-report.html",
         footer_text=footer_text,
+        footer_signature=footer_signature,
+        footer_date=footer_date,
+        footer_color=footer_color,
     )
 
     with open(os.path.join(job_dir, "index.html"), "w", encoding="utf-8") as f:
@@ -290,6 +302,9 @@ def write_report(
         rows=sorted_rows,
         screenshots=flat_screens,
         footer_text=footer_text,
+        footer_signature=footer_signature,
+        footer_date=footer_date,
+        footer_color=footer_color,
     )
     with open(os.path.join(job_dir, "jednoduchy-report.html"), "w", encoding="utf-8") as f:
         f.write(simple_html)

@@ -66,6 +66,21 @@
 <label>Vlastní text do patičky (např. jméno klienta, poznámka, kontakt)</label>
 <textarea name="footer_text" rows="2" style="width:100%;" placeholder="Např.: Report připraven pro Magnolia Medical s.r.o. – kontakt: jan@agentura.cz"></textarea>
 
+<div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-top:10px">
+  <div>
+    <label>Barva textu patičky</label>
+    <input type="color" name="footer_color" value="#1c2430" style="width:60px;height:38px;padding:2px;">
+  </div>
+  <div style="flex:1;min-width:200px">
+    <label>Podpis (jméno / pozice)</label>
+    <input name="footer_signature" placeholder="Např.: Jan Novák, konzultant">
+  </div>
+  <div style="min-width:160px">
+    <label>Datum</label>
+    <input type="date" name="footer_date">
+  </div>
+</div>
+
     <button type="submit">Spustit test</button>
   </form>
 

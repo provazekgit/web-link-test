@@ -70,6 +70,7 @@
 
   footer{color:var(--muted);font-size:.8rem;text-align:center;margin-top:40px}
   .custom-footer-text{white-space:pre-line;color:var(--ink);font-size:.88rem;margin-bottom:14px;padding:14px 18px;background:var(--card-bg);border:1px solid var(--line);border-radius:12px;text-align:left}
+  .footer-signature{font-weight:600;font-size:.85rem;margin-bottom:14px}
 
   .pdf-controls{background:var(--card-bg);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:24px}
   .pdf-controls .title{font-weight:600;font-size:.85rem;margin-bottom:10px}
@@ -251,7 +252,16 @@
   {% endif %}
 
   <footer>
-    {% if footer_text %}<div class="custom-footer-text">{{ footer_text }}</div>{% endif %}
+    {% if footer_text %}
+    <div class="custom-footer-text" {% if footer_color %}style="color:{{ footer_color }}"{% endif %}>{{ footer_text }}</div>
+    {% endif %}
+    {% if footer_signature or footer_date %}
+    <div class="footer-signature" {% if footer_color %}style="color:{{ footer_color }}"{% endif %}>
+      {% if footer_signature %}{{ footer_signature }}{% endif %}
+      {% if footer_signature and footer_date %} · {% endif %}
+      {% if footer_date %}{{ footer_date }}{% endif %}
+    </div>
+    {% endif %}
     Vygenerováno automatickým nástrojem pro kontrolu odkazů a vzhledu webu.
     {% if simple_report_url %}<br><a href="{{ simple_report_url }}">Zobrazit jednoduchou verzi reportu (prostá tabulka)</a>{% endif %}
   </footer>

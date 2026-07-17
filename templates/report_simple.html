@@ -34,9 +34,16 @@ code{background:#f4f4f4;padding:2px 6px;border-radius:6px}
 </div>
 {% endfor %}
 {% endif %}
-{% if footer_text %}
+{% if footer_text or footer_signature or footer_date %}
 <hr>
-<p style="white-space:pre-line">{{ footer_text }}</p>
+{% if footer_text %}<p style="white-space:pre-line{% if footer_color %};color:{{ footer_color }}{% endif %}">{{ footer_text }}</p>{% endif %}
+{% if footer_signature or footer_date %}
+<p style="font-weight:600{% if footer_color %};color:{{ footer_color }}{% endif %}">
+  {% if footer_signature %}{{ footer_signature }}{% endif %}
+  {% if footer_signature and footer_date %} · {% endif %}
+  {% if footer_date %}{{ footer_date }}{% endif %}
+</p>
+{% endif %}
 {% endif %}
 <p style="margin-top:30px"><a href="index.html">➡ Zobrazit novou vizuální verzi reportu (screenshoty podle stránky, SEO kontrola…)</a></p>
 </body></html>

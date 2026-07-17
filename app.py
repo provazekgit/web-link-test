@@ -1,5 +1,6 @@
 # app.py
 import os
+import re
 import time
 import threading
 import traceback
@@ -80,6 +81,11 @@ def run():
     base_url = request.form.get("base_url", "").strip()
     sitemap = request.form.get("sitemap_url", "").strip() or None
     footer_text = request.form.get("footer_text", "").strip() or None
+    footer_signature = request.form.get("footer_signature", "").strip() or None
+    footer_date = request.form.get("footer_date", "").strip() or None
+    footer_color = request.form.get("footer_color", "").strip()
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", footer_color or ""):
+        footer_color = None
 
     if not base_url:
         return "Zadej Base URL", 400
@@ -192,6 +198,9 @@ def run():
         seo_pages=seo_pages,
         seo_site=seo_site,
         footer_text=footer_text,
+        footer_signature=footer_signature,
+        footer_date=footer_date,
+        footer_color=footer_color,
     )
 
     # --- 7) Vytvoření PDF z HTML reportu ---
