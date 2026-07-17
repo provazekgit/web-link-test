@@ -267,8 +267,12 @@ def screenshot_pages(
     out_dir: str,
     selected_devices: list[str] | None = None,
     timeout_ms: int = 40000,
+    on_progress: "callable | None" = None,
 ):
     """Udělá screenshoty zadaných stránek pro vybraná zařízení.
+
+    `on_progress(done, total)` se zavolá po každém (stránka, zařízení) pokusu
+    (ať už úspěšném nebo ne) – slouží k zobrazení průběhu na frontendu.
 
     Vrací seznam záznamů {"url", "device", "file"} popisujících uložené
     snímky – používá se pro seskupení náhledů v klientském reportu.
@@ -279,6 +283,8 @@ def screenshot_pages(
     # 1) Vytvoř kompletní URL z base + rel a udělej kanonizaci
     resolved = [urljoin(base_url, rel) for rel in pages]
     unique_targets = list(dict.fromkeys(_canonical_url(u) for u in resolved))
+    total_steps = len(selected_devices) * len(unique_targets)
+    done_steps = 0
 
     manifest: list[dict] = []
 
@@ -333,6 +339,10 @@ def screenshot_pages(
 
                         except Exception as e:
                             print(f"[visual] ERROR while processing {device} {target}: {e!r}")
+                        finally:
+                            done_steps += 1
+                            if on_progress:
+                                on_progress(done_steps, total_steps)
                 finally:
                     context.close()
         finally:

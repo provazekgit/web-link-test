@@ -102,7 +102,9 @@ def collect_links(base_url: str, sitemap_url: Optional[str] = None, max_pages: i
 
     return sorted(found), sorted(excluded)
 
-def check_links(urls: List[str]) -> List[Dict[str, object]]:
+def check_links(urls: List[str], on_progress: Optional[callable] = None) -> List[Dict[str, object]]:
+    """`on_progress(done, total)` se zavolá po každé dokončené URL – slouží
+    k zobrazení průběhu/odhadu zbývajícího času na frontendu."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     def probe(u: str) -> Dict[str, object]:
@@ -140,10 +142,13 @@ def check_links(urls: List[str]) -> List[Dict[str, object]]:
         }
 
     rows: List[Dict[str, object]] = []
+    total = len(urls)
     with ThreadPoolExecutor(max_workers=MAX_CONCURRENT_REQUESTS) as ex:
         futures = [ex.submit(probe, u) for u in urls]
         for f in as_completed(futures):
             rows.append(f.result())
+            if on_progress:
+                on_progress(len(rows), total)
     # pro stabilní výstup seřadíme podle URL
     rows.sort(key=lambda r: r["url"])
     return rows

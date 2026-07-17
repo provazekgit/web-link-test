@@ -2,10 +2,11 @@
 import os
 import re
 import time
+import uuid
 import threading
 import traceback
 import webbrowser
-from flask import Flask, render_template, request, send_from_directory
+from flask import Flask, render_template, request, send_from_directory, jsonify
 from dotenv import load_dotenv
 from utils import requires_auth, fmt_duration
 import scanner
@@ -36,9 +37,6 @@ def _with_scheme(u: str) -> str:
 
 load_dotenv()
 
-# Odhady časů – lze měnit přes .env
-CHECK_PER_PAGE_SEC = int(os.getenv("CHECK_PER_PAGE_SEC", "3"))
-SHOT_PER_ITEM_SEC = int(os.getenv("SHOT_PER_ITEM_SEC", "8"))
 MAP_EXTRA_WAIT_MS = int(os.getenv("MAP_EXTRA_WAIT_MS", "2500"))
 
 # Výstupní složka pro reporty
@@ -53,6 +51,55 @@ PORT = int(os.getenv("PORT", "8080"))
 OPEN_BROWSER = os.getenv("OPEN_BROWSER", "1") == "1"
 
 app = Flask(__name__)
+
+# ---------------------------------------------------------------
+# BĚH TESTU NA POZADÍ – stav úloh pro průběh/odhad času na frontendu
+# ---------------------------------------------------------------
+
+JOB_STEPS = 5  # 1 hledání stránek, 2 kontrola odkazů, 3 screenshoty, 4 SEO, 5 report/PDF
+JOBS: dict = {}
+JOBS_LOCK = threading.Lock()
+
+
+def _job_init(job_id: str) -> None:
+    now = time.time()
+    with JOBS_LOCK:
+        # ať se v paměti nehromadí staré dokončené úlohy donekonečna
+        stale = [
+            jid for jid, j in JOBS.items()
+            if j.get("status") in ("done", "error") and now - j.get("started_at", now) > 3600
+        ]
+        for jid in stale:
+            JOBS.pop(jid, None)
+        JOBS[job_id] = {
+            "status": "running",
+            "step": 0,
+            "step_total": JOB_STEPS,
+            "phase": "Připravuji test…",
+            "current": 0,
+            "total": 0,
+            "started_at": now,
+            "phase_started_at": now,
+            "result": None,
+            "error": None,
+        }
+
+
+def _job_set(job_id: str, **kwargs) -> None:
+    with JOBS_LOCK:
+        if job_id in JOBS:
+            JOBS[job_id].update(kwargs)
+
+
+def _job_phase(job_id: str, step: int, phase: str, total: int = 0) -> None:
+    _job_set(job_id, step=step, phase=phase, current=0, total=total, phase_started_at=time.time())
+
+
+def _job_get(job_id: str):
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        return dict(job) if job else None
+
 
 # ---------------------------------------------------------------
 # DOMOVSKÁ STRÁNKA
@@ -76,8 +123,6 @@ def index():
 @app.post("/run")
 @requires_auth
 def run():
-    started_at = time.time()
-
     base_url = request.form.get("base_url", "").strip()
     sitemap = request.form.get("sitemap_url", "").strip() or None
     footer_text = request.form.get("footer_text", "").strip() or None
@@ -88,152 +133,229 @@ def run():
         footer_color = None
 
     if not base_url:
-        return "Zadej Base URL", 400
+        return jsonify({"error": "Zadej Base URL"}), 400
 
     base_url = _with_scheme(base_url)
     if sitemap:
         sitemap = _with_scheme(sitemap)
 
-    # --- 1) Získání a testování odkazů (stránky vyžadující přihlášení
-    #         se automaticky vynechávají – košík, login, účet, admin…) ---
-    urls, excluded_urls = scanner.collect_links(base_url, sitemap)
-    rows = scanner.check_links(urls)
-    tested_urls = list({row["url"] for row in rows})
-    pages_count = len(tested_urls)
+    do_screens = request.form.get("screenshots_enabled") == "1"
+    raw_screens = (request.form.get("screenshot_pages", "") or "").strip()
+    devices = request.form.getlist("devices")
 
-    # --- 2) Výpočet odhadu času (základ) ---
-    estimate_sec = pages_count * CHECK_PER_PAGE_SEC
-    screens_manifest = []
-    top_pages = tested_urls[:5]
-    top_seen = {_canonical_url(u) for u in top_pages}
+    job_id = uuid.uuid4().hex[:12]
+    _job_init(job_id)
 
-    # --- 3) Založ finální složku reportu a screenshoty ukládej rovnou tam ---
-    job_dir = scanner.make_job_dir(REPORTS_ROOT, base_url)
-    screens_dir = os.path.join(job_dir, "screens")
+    threading.Thread(
+        target=_run_job,
+        args=(job_id, base_url, sitemap, do_screens, raw_screens, devices,
+              footer_text, footer_signature, footer_date, footer_color),
+        daemon=True,
+    ).start()
 
+    return jsonify({"job_id": job_id})
+
+
+def _run_job(job_id, base_url, sitemap, do_screens, raw_screens, devices,
+             footer_text, footer_signature, footer_date, footer_color):
+    """Odpovídá bývalému synchronnímu tělu /run – běží ve vlastním vlákně
+    a průběžně zapisuje stav do JOBS, aby ho mohl frontend odsledovat.
+
+    `render_template` (uvnitř scanner.write_report) potřebuje aktivní Flask
+    app kontext, který se mimo obsluhu HTTP požadavku (tj. v tomhle vlákně)
+    sám nezaloží – proto celé tělo běží uvnitř `app.app_context()`.
+    """
+    with app.app_context():
+        _run_job_body(job_id, base_url, sitemap, do_screens, raw_screens, devices,
+                      footer_text, footer_signature, footer_date, footer_color)
+
+
+def _run_job_body(job_id, base_url, sitemap, do_screens, raw_screens, devices,
+                   footer_text, footer_signature, footer_date, footer_color):
+    started_at = time.time()
     try:
-        from lib.visual import screenshot_pages
+        # --- 1) Získání odkazů (stránky vyžadující přihlášení se
+        #         automaticky vynechávají – košík, login, účet, admin…) ---
+        _job_phase(job_id, 1, "Hledám stránky webu…")
+        urls, excluded_urls = scanner.collect_links(base_url, sitemap)
+
+        # --- 2) Kontrola odkazů ---
+        _job_phase(job_id, 2, f"Kontroluji odkazy (0/{len(urls)})…", total=len(urls))
+
+        def on_link_progress(done, total):
+            _job_set(job_id, current=done, total=total, phase=f"Kontroluji odkazy ({done}/{total})…")
+
+        rows = scanner.check_links(urls, on_progress=on_link_progress)
+        tested_urls = list({row["url"] for row in rows})
+        pages_count = len(tested_urls)
+
+        screens_manifest = []
+        top_pages = tested_urls[:5]
+        top_seen = {_canonical_url(u) for u in top_pages}
+
+        # --- 3) Založ finální složku reportu a screenshoty ukládej rovnou tam ---
+        job_dir = scanner.make_job_dir(REPORTS_ROOT, base_url)
+        screens_dir = os.path.join(job_dir, "screens")
 
         auto_devices = [
             "Desktop Chrome", "Desktop Firefox", "Desktop Edge", "Desktop Opera",
             "iPhone 13 Safari", "Android Chrome (Pixel 7)",
             "macOS Safari (Desktop)", "macOS Chrome (Desktop)", "Galaxy S23 Chrome"
         ]
+        try:
+            from lib.visual import screenshot_pages
 
-        # Přičti do odhadu
-        estimate_sec += len(top_pages) * len(auto_devices) * (
-            SHOT_PER_ITEM_SEC + MAP_EXTRA_WAIT_MS / 1000
-        )
+            auto_total = len(top_pages) * len(auto_devices)
+            _job_phase(job_id, 3, f"Vytvářím screenshoty (0/{auto_total})…", total=auto_total)
 
-        print(f"[screenshots:auto] start → {top_pages}")
-        manifest = screenshot_pages(
-            base_url=base_url,
-            pages=top_pages,
-            out_dir=screens_dir,
-            selected_devices=auto_devices,
-        )
-        screens_manifest.extend(manifest or [])
-        print("[screenshots:auto] done")
-    except Exception as e:
-        print(f"[screenshots:auto] přeskočeno: {e}")
-        traceback.print_exc()
+            def on_shot_progress(done, total):
+                _job_set(job_id, current=done, total=total, phase=f"Vytvářím screenshoty ({done}/{total})…")
 
-    # --- 4) Uživatelské screenshoty (z formuláře) ---
-    try:
-        do_screens = request.form.get("screenshots_enabled") == "1"
-        raw = (request.form.get("screenshot_pages", "") or "").strip()
-        devices = request.form.getlist("devices")
+            print(f"[screenshots:auto] start → {top_pages}")
+            manifest = screenshot_pages(
+                base_url=base_url,
+                pages=top_pages,
+                out_dir=screens_dir,
+                selected_devices=auto_devices,
+                on_progress=on_shot_progress,
+            )
+            screens_manifest.extend(manifest or [])
+            print("[screenshots:auto] done")
+        except Exception as e:
+            print(f"[screenshots:auto] přeskočeno: {e}")
+            traceback.print_exc()
 
-        if do_screens and raw and devices:
-            requested = [ln.strip() for ln in raw.splitlines() if ln.strip()][:10]
-            requested_abs = [urljoin(base_url, u) for u in requested]
-            pages = [u for u in requested_abs if _canonical_url(u) not in top_seen]
+        # --- 4) Uživatelské screenshoty (z formuláře) ---
+        try:
+            if do_screens and raw_screens and devices:
+                requested = [ln.strip() for ln in raw_screens.splitlines() if ln.strip()][:10]
+                requested_abs = [urljoin(base_url, u) for u in requested]
+                pages = [u for u in requested_abs if _canonical_url(u) not in top_seen]
 
-            if not pages:
-                print("[screenshots:user] skip → vše už pokryto auto screenshoty")
+                if not pages:
+                    print("[screenshots:user] skip → vše už pokryto auto screenshoty")
+                else:
+                    from lib.visual import screenshot_pages
+
+                    user_total = len(pages) * len(devices)
+                    _job_phase(job_id, 3, f"Vytvářím vlastní screenshoty (0/{user_total})…", total=user_total)
+
+                    def on_shot_progress2(done, total):
+                        _job_set(job_id, current=done, total=total, phase=f"Vytvářím vlastní screenshoty ({done}/{total})…")
+
+                    print(f"[screenshots:user] start → {pages} | devices={devices}")
+                    manifest = screenshot_pages(
+                        base_url=base_url,
+                        pages=pages,
+                        out_dir=screens_dir,
+                        selected_devices=devices,
+                        on_progress=on_shot_progress2,
+                    )
+                    screens_manifest.extend(manifest or [])
+                    print("[screenshots:user] done")
             else:
-                from lib.visual import screenshot_pages
+                print(f"[screenshots:user] skip → enabled={do_screens}, raw='{bool(raw_screens)}', devices={devices}")
+        except Exception as e:
+            print(f"[screenshots:user] přeskočeno: {e}")
+            traceback.print_exc()
 
-                # přičti do odhadu
-                estimate_sec += len(pages) * len(devices) * (
-                    SHOT_PER_ITEM_SEC + MAP_EXTRA_WAIT_MS / 1000
-                )
+        # --- 5) SEO/indexační kontrola (title, meta popis, H1, noindex, canonical,
+        #        robots.txt, sitemap.xml) – na stejných top stránkách jako screenshoty ---
+        _job_phase(job_id, 4, "Kontroluji SEO a indexaci…")
+        seo_pages, seo_site = [], {}
+        try:
+            from lib import seo
 
-                print(f"[screenshots:user] start → {pages} | devices={devices}")
-                manifest = screenshot_pages(
-                    base_url=base_url,
-                    pages=pages,
-                    out_dir=screens_dir,
-                    selected_devices=devices,
-                )
-                screens_manifest.extend(manifest or [])
-                print("[screenshots:user] done")
-        else:
-            print(f"[screenshots:user] skip → enabled={do_screens}, raw='{bool(raw)}', devices={devices}")
+            seo_pages = seo.analyze_pages(top_pages)
+            seo_site = seo.check_site_indexing(base_url)
+        except Exception as e:
+            print(f"[seo] přeskočeno: {e}")
+            traceback.print_exc()
+
+        # --- 6) Zápis reportu (obsahuje i seskupené screenshoty a vyloučené stránky) ---
+        _job_phase(job_id, 5, "Generuji report a PDF…")
+        duration_sec = time.time() - started_at
+        scanner.write_report(
+            job_dir,
+            base_url,
+            rows,
+            excluded_urls=excluded_urls,
+            screenshots=screens_manifest,
+            duration_sec=duration_sec,
+            seo_pages=seo_pages,
+            seo_site=seo_site,
+            footer_text=footer_text,
+            footer_signature=footer_signature,
+            footer_date=footer_date,
+            footer_color=footer_color,
+        )
+
+        # --- 7) Vytvoření PDF z HTML reportu ---
+        index_path = os.path.join(job_dir, "index.html")
+        pdf_path = os.path.join(job_dir, "report.pdf")
+        try:
+            html_to_pdf(index_path, pdf_path)
+        except Exception as e:
+            print(f"[PDF] Nepodařilo se vytvořit PDF: {e}")
+
+        # --- 8) Výsledky ---
+        screens_count = _count_pngs(screens_dir)
+        duration_text = fmt_duration(duration_sec)
+        print(f"[info] Skutečná doba testu: {duration_text}")
+
+        rel = os.path.relpath(job_dir, REPORTS_ROOT).replace("\\", "/")
+        report_url = f"/report/{rel}/index.html"
+        simple_report_url = f"/report/{rel}/jednoduchy-report.html"
+
+        _job_set(
+            job_id,
+            status="done",
+            step=JOB_STEPS,
+            phase="Hotovo",
+            current=1,
+            total=1,
+            result={
+                "pages": pages_count,
+                "screens": screens_count,
+                "excluded": len(excluded_urls),
+                "report_url": report_url,
+                "simple_report_url": simple_report_url,
+                "duration": duration_text,
+            },
+        )
     except Exception as e:
-        print(f"[screenshots:user] přeskočeno: {e}")
         traceback.print_exc()
+        _job_set(job_id, status="error", phase="Chyba", error=str(e)[:500])
 
-    # --- 5) SEO/indexační kontrola (title, meta popis, H1, noindex, canonical,
-    #        robots.txt, sitemap.xml) – na stejných top stránkách jako screenshoty ---
-    seo_pages, seo_site = [], {}
-    try:
-        from lib import seo
 
-        seo_pages = seo.analyze_pages(top_pages)
-        seo_site = seo.check_site_indexing(base_url)
-    except Exception as e:
-        print(f"[seo] přeskočeno: {e}")
-        traceback.print_exc()
+@app.get("/api/progress/<job_id>")
+@requires_auth
+def api_progress(job_id):
+    job = _job_get(job_id)
+    if not job:
+        return jsonify({"error": "Úloha nenalezena (možná byl server mezitím restartován)."}), 404
 
-    # --- 6) Zápis reportu (obsahuje i seskupené screenshoty a vyloučené stránky) ---
-    duration_sec = time.time() - started_at
-    scanner.write_report(
-        job_dir,
-        base_url,
-        rows,
-        excluded_urls=excluded_urls,
-        screenshots=screens_manifest,
-        duration_sec=duration_sec,
-        seo_pages=seo_pages,
-        seo_site=seo_site,
-        footer_text=footer_text,
-        footer_signature=footer_signature,
-        footer_date=footer_date,
-        footer_color=footer_color,
-    )
+    now = time.time()
+    current = job.get("current") or 0
+    total = job.get("total") or 0
+    eta_text = None
+    if job.get("status") == "running" and current > 0 and total > current:
+        phase_elapsed = now - job.get("phase_started_at", now)
+        rate = phase_elapsed / current
+        eta_text = fmt_duration(rate * (total - current))
 
-    # --- 7) Vytvoření PDF z HTML reportu ---
-    index_path = os.path.join(job_dir, "index.html")
-    pdf_path = os.path.join(job_dir, "report.pdf")
-    try:
-        html_to_pdf(index_path, pdf_path)
-    except Exception as e:
-        print(f"[PDF] Nepodařilo se vytvořit PDF: {e}")
-
-    # --- 8) Výsledky ---
-    screens_count = _count_pngs(screens_dir)
-    estimate_text = fmt_duration(estimate_sec)
-    duration_text = fmt_duration(duration_sec)
-    print(f"[info] Odhadovaný čas testu: {estimate_text} | skutečná doba: {duration_text}")
-
-    rel = os.path.relpath(job_dir, REPORTS_ROOT).replace("\\", "/")
-    report_url = f"/report/{rel}/index.html"
-    simple_report_url = f"/report/{rel}/jednoduchy-report.html"
-
-    return render_template(
-        "index.html",
-        reports_root=REPORTS_ROOT,
-        result={
-            "pages": pages_count,
-            "screens": screens_count,
-            "excluded": len(excluded_urls),
-            "report_url": report_url,
-            "simple_report_url": simple_report_url,
-            "estimate": estimate_text,
-            "duration": duration_text,
-        },
-    )
+    return jsonify({
+        "status": job.get("status"),
+        "step": job.get("step", 0),
+        "step_total": job.get("step_total", JOB_STEPS),
+        "phase": job.get("phase"),
+        "current": current,
+        "total": total,
+        "elapsed": fmt_duration(now - job.get("started_at", now)),
+        "eta": eta_text,
+        "result": job.get("result"),
+        "error": job.get("error"),
+    })
 
 # ---------------------------------------------------------------
 # ZOBRAZENÍ REPORTŮ
