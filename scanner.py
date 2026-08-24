@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 import os
 import json
 
-from utils import fmt_ms, fmt_duration
+from utils import fmt_ms, fmt_seconds_from_ms, fmt_duration
 from lib.crawl import crawl_bfs
 from lib.url_utils import same_domain, norm_url, is_excluded_path
 from lib.http_client import head, get_html, HTTP_TIMEOUT
@@ -220,7 +220,8 @@ def report_context(
     return {
         "base_url": data.get("base_url"), "generated_display": generated_display,
         "total": total, "ok_count": ok_count, "failed": total - ok_count, "avg_ms": avg_ms,
-        "fmt_ms": fmt_ms, "rows": sorted_rows, "excluded_urls": data.get("excluded", []),
+        "fmt_ms": fmt_ms, "fmt_seconds_from_ms": fmt_seconds_from_ms,
+        "rows": sorted_rows, "excluded_urls": data.get("excluded", []),
         "pages_gallery": gallery,
         "duration_text": fmt_duration(data.get("duration_sec")) if data.get("duration_sec") is not None else None,
         "seo_pages": data.get("seo_pages", []), "seo_site": data.get("seo_site", {}),
@@ -281,7 +282,8 @@ def write_report(
     flat_screens = sorted([{"file": shot.get("file", ""), "rel": f"screens/{shot.get('file', '')}"} for shot in screenshots or []], key=lambda item: item["file"])
     simple_html = render_template(
         "report_simple.html", base_url=base_url, ts=data["generated_at"], total=len(rows),
-        ok_count=report_context(data)["ok_count"], failed=report_context(data)["failed"], fmt_ms=fmt_ms,
+        ok_count=report_context(data)["ok_count"], failed=report_context(data)["failed"],
+        fmt_ms=fmt_ms, fmt_seconds_from_ms=fmt_seconds_from_ms,
         rows=rows_sorted, screenshots=flat_screens, footer_text=footer_text,
         footer_signature=footer_signature, footer_date=footer_date, footer_color=footer_color,
     )

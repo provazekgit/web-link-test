@@ -155,13 +155,55 @@ def test_public_bundle_excludes_email_and_creates_thumbnail(tmp_path, monkeypatc
     }
     monkeypatch.setattr(webapp, "html_to_pdf", lambda html, pdf: Path(pdf).write_bytes(b"%PDF-test"))
     stage = report_dir / "published" / "abc"
+    progress = []
     with webapp.app.app_context():
-        public = webapp._create_public_bundle(report_dir, stage, data, {"screens", "summary"}, "https://signed/index.html", "1.1.2027")
+        public = webapp._create_public_bundle(
+            report_dir, stage, data, {"screens", "summary"},
+            "https://signed/index.html", "1.1.2027",
+            on_progress=lambda phase, current, total, percent: progress.append(
+                (phase, current, total, percent)
+            ),
+        )
     assert "client_email" not in public
     assert (stage / "thumbs" / "shot.webp").is_file()
     public_json = json.loads((stage / "report.json").read_text(encoding="utf-8"))
     assert "secret@example.cz" not in json.dumps(public_json)
     assert "secret@example.cz" not in (stage / "index.html").read_text(encoding="utf-8")
+    assert progress[0][3] == 3
+    assert progress[-1][3] == 70
+    assert any("náhled" in phase.lower() for phase, *_ in progress)
+    assert [item[3] for item in progress] == sorted(item[3] for item in progress)
+
+
+def test_publish_progress_payload_calculates_elapsed_and_eta():
+    job = {
+        "status": "running",
+        "phase": "Nahrávám soubory",
+        "started_at": 100.0,
+        "progress_percent": 50,
+    }
+    payload = webapp._publish_progress_payload(job, now=200.0)
+    assert payload["progress_percent"] == 50
+    assert payload["elapsed_seconds"] == 100
+    assert payload["eta_seconds"] == 100
+    assert payload["elapsed"] == "1 min 40 s"
+    assert payload["eta"] == "1 min 40 s"
+    assert "started_at" not in payload
+
+    complete = webapp._publish_progress_payload(
+        {**job, "status": "done", "progress_percent": 100}, now=225.0
+    )
+    assert complete["eta"] is None
+    assert complete["eta_seconds"] is None
+
+
+def test_publish_progress_payload_does_not_guess_too_early():
+    payload = webapp._publish_progress_payload(
+        {"status": "running", "started_at": 100.0, "progress_percent": 2},
+        now=102.0,
+    )
+    assert payload["elapsed_seconds"] == 2
+    assert payload["eta"] is None
 
 
 def test_public_data_contains_only_selected_fields():
@@ -200,9 +242,11 @@ def test_partial_publish_failure_rolls_back_only_its_remote_directory(tmp_path, 
         def delete_directory(self, remote_dir):
             deleted.append(remote_dir)
 
-    def fake_bundle(report_dir, stage_dir, data, sections, report_url, expires_display):
+    def fake_bundle(report_dir, stage_dir, data, sections, report_url, expires_display, on_progress=None):
         stage_dir.mkdir(parents=True)
         (stage_dir / "index.html").write_text("partial", encoding="utf-8")
+        if on_progress:
+            on_progress("Balíček je připravený", 1, 1, 70)
         return data
 
     monkeypatch.setattr(webapp, "REPORTS_ROOT", str(tmp_path))

@@ -60,6 +60,13 @@ def fmt_ms(ms: int, sep: str = " ") -> str:
         s = str(ms)
     return s
 
+def fmt_seconds_from_ms(ms: int) -> str:
+    """Převede milisekundy na sekundy s jedním desetinným místem a českou čárkou."""
+    try:
+        return f"{float(ms) / 1000:.1f}".replace(".", ",")
+    except (TypeError, ValueError):
+        return str(ms)
+
 def fmt_duration(seconds: float) -> str:
     """Formátuje dobu trvání v sekundách jako '4 min 52 s' / '33 s'."""
     mins, secs = divmod(int(seconds), 60)

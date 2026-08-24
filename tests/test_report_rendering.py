@@ -29,7 +29,13 @@ def test_new_report_schema_and_local_publish_controls(tmp_path):
     assert data["schema_version"] == 2
     assert data["client_email"] == "client@example.cz"
     assert "Publikovat pro klienta" in html
+    assert 'id="publishProgress"' in html
+    assert 'role="progressbar"' in html
+    assert 'id="publishProgressFill"' in html
+    assert 'id="publishProgressTiming"' in html
+    assert "Odhad připravuji" in html
     assert "HTTP odezva" in html
+    assert "123 ms (0,1 s)" in html
     assert "client@example.cz" not in html
 
 

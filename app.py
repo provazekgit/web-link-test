@@ -10,6 +10,7 @@ import copy
 import datetime as dt
 import json
 import shutil
+from typing import Callable, Optional
 from flask import Flask, render_template, request, send_from_directory, jsonify
 from dotenv import load_dotenv
 from utils import requires_auth, fmt_duration
@@ -424,20 +425,65 @@ def _sanitize_public_data(data: dict, sections: set[str]) -> dict:
     return public_data
 
 
-def _create_public_bundle(report_dir: Path, stage_dir: Path, data: dict, sections: set[str], report_url: str, expires_display: str) -> dict:
+def _publish_job_update(publish_job_id: str, **values) -> None:
+    with PUBLISH_LOCK:
+        job = PUBLISH_JOBS.get(publish_job_id)
+        if job is not None:
+            job.update(values)
+
+
+def _publish_progress_payload(job: dict, now: float | None = None) -> dict:
+    """Doplní do stavu publikace stabilní procenta a orientační ETA."""
+    now = now if now is not None else time.time()
+    started_at = float(job.get("started_at") or now)
+    elapsed_seconds = max(0, int(now - started_at))
+    percent = max(0, min(100, int(round(float(job.get("progress_percent") or 0)))))
+    eta_seconds = None
+    if job.get("status") == "running" and elapsed_seconds >= 3 and 3 <= percent < 100:
+        eta_seconds = max(1, int(elapsed_seconds * (100 - percent) / percent))
+    payload = dict(job)
+    payload.pop("started_at", None)
+    payload["progress_percent"] = percent
+    payload["elapsed"] = fmt_duration(elapsed_seconds)
+    payload["elapsed_seconds"] = elapsed_seconds
+    payload["eta"] = fmt_duration(eta_seconds) if eta_seconds is not None else None
+    payload["eta_seconds"] = eta_seconds
+    return payload
+
+
+def _create_public_bundle(
+    report_dir: Path,
+    stage_dir: Path,
+    data: dict,
+    sections: set[str],
+    report_url: str,
+    expires_display: str,
+    on_progress: Optional[Callable[[str, int, int, int], None]] = None,
+) -> dict:
     from PIL import Image
 
+    def progress(phase: str, current: int, total: int, percent: int) -> None:
+        if on_progress:
+            on_progress(phase, current, total, percent)
+
+    progress("Zakládám klientský balíček…", 0, 0, 3)
     stage_dir.mkdir(parents=True, exist_ok=False)
     public_data = _sanitize_public_data(data, sections)
+    progress("Připravuji data klientského reportu…", 0, 0, 5)
 
     if "screens" in sections:
         (stage_dir / "screens").mkdir()
         (stage_dir / "thumbs").mkdir()
         valid_shots = []
-        for shot in public_data.get("screenshots", []):
+        requested_shots = list(public_data.get("screenshots", []))
+        total_shots = len(requested_shots)
+        progress(f"Vytvářím náhledy screenshotů (0/{total_shots})…", 0, total_shots, 8)
+        for index, shot in enumerate(requested_shots, 1):
             filename = str(shot.get("file", ""))
             source = report_dir / "screens" / filename
             if not source.is_file() or source.suffix.lower() != ".png":
+                percent = 8 + int(42 * index / max(1, total_shots))
+                progress(f"Vytvářím náhledy screenshotů ({index}/{total_shots})…", index, total_shots, percent)
                 continue
             shutil.copy2(source, stage_dir / "screens" / filename)
             thumb_path = stage_dir / "thumbs" / f"{source.stem}.webp"
@@ -445,17 +491,24 @@ def _create_public_bundle(report_dir: Path, stage_dir: Path, data: dict, section
                 image.thumbnail((420, 900))
                 image.save(thumb_path, "WEBP", quality=78, method=4)
             valid_shots.append(shot)
+            percent = 8 + int(42 * index / max(1, total_shots))
+            progress(f"Vytvářím náhledy screenshotů ({index}/{total_shots})…", index, total_shots, percent)
         public_data["screenshots"] = valid_shots
     else:
         public_data["screenshots"] = []
+        progress("Screenshoty nejsou ve vybraných sekcích.", 0, 0, 50)
 
+    progress("Generuji klientské HTML…", 0, 0, 54)
     scanner.render_report(
         public_data, str(stage_dir / "index.html"), sections=sections,
         is_published=True, expires_display=expires_display, published_report_url=report_url,
     )
+    progress("Vytvářím klientské PDF…", 0, 0, 58)
     html_to_pdf(str(stage_dir / "index.html"), str(stage_dir / "report.pdf"))
+    progress("Dokončuji soubory klientského reportu…", 0, 0, 68)
     with (stage_dir / "report.json").open("w", encoding="utf-8") as stream:
         json.dump(public_data, stream, ensure_ascii=False, indent=2)
+    progress("Klientský balíček je připravený.", 0, 0, 70)
     return public_data
 
 
@@ -479,18 +532,37 @@ def _run_publish_job(publish_job_id: str, report_id: str, sections: set[str]) ->
                 config.cdn_base_url, config.token_key, remote_dir, "index.html", int(expires_at.timestamp())
             )
             stage_dir = report_dir / "published" / publication_id
-            with PUBLISH_LOCK:
-                PUBLISH_JOBS[publish_job_id].update(phase="Připravuji klientskou verzi…")
-            public_data = _create_public_bundle(report_dir, stage_dir, data, sections, report_url, expires_display)
+            _publish_job_update(publish_job_id, phase="Připravuji klientskou verzi…", progress_percent=2)
+
+            def on_bundle_progress(phase: str, done: int, total: int, percent: int) -> None:
+                _publish_job_update(
+                    publish_job_id, phase=phase, current=done, total=total,
+                    progress_percent=percent,
+                )
+
+            public_data = _create_public_bundle(
+                report_dir, stage_dir, data, sections, report_url, expires_display,
+                on_progress=on_bundle_progress,
+            )
 
             client = BunnyStorageClient(config)
             def on_upload(done: int, total: int) -> None:
-                with PUBLISH_LOCK:
-                    PUBLISH_JOBS[publish_job_id].update(
-                        current=done, total=total, phase=f"Nahrávám na Bunny ({done}/{total})…"
-                    )
+                percent = 72 + int(25 * done / max(1, total))
+                _publish_job_update(
+                    publish_job_id, current=done, total=total,
+                    phase=f"Nahrávám na Bunny ({done}/{total})…",
+                    progress_percent=percent,
+                )
+            _publish_job_update(
+                publish_job_id, phase="Zahajuji upload na Bunny…", current=0,
+                total=0, progress_percent=72,
+            )
             client.upload_tree(stage_dir, remote_dir, on_progress=on_upload)
 
+            _publish_job_update(
+                publish_job_id, phase="Ukládám publikační metadata…", current=0,
+                total=0, progress_percent=99,
+            )
             delete_after = published_at + dt.timedelta(days=config.retention_days)
             entry = {
                 "id": publication_id, "remote_dir": remote_dir,
@@ -508,8 +580,10 @@ def _run_publish_job(publish_job_id: str, report_id: str, sections: set[str]) ->
                 "report_url": report_url, "expires_at": expires_at.isoformat(),
                 "expires_display": expires_display, "email": email,
             }
-            with PUBLISH_LOCK:
-                PUBLISH_JOBS[publish_job_id].update(status="done", phase="Publikováno", result=result)
+            _publish_job_update(
+                publish_job_id, status="done", phase="Publikováno",
+                progress_percent=100, current=1, total=1, result=result,
+            )
             try:
                 cleanup_expired_publications()
             except Exception:
@@ -525,8 +599,10 @@ def _run_publish_job(publish_job_id: str, report_id: str, sections: set[str]) ->
                     pass
             if stage_dir and stage_dir.is_dir():
                 shutil.rmtree(stage_dir, ignore_errors=True)
-            with PUBLISH_LOCK:
-                PUBLISH_JOBS[publish_job_id].update(status="error", phase="Publikace selhala", error=str(exc)[:500])
+            _publish_job_update(
+                publish_job_id, status="error", phase="Publikace selhala",
+                error=str(exc)[:500],
+            )
 
 
 @app.post("/api/publish/<report_id>")
@@ -550,7 +626,8 @@ def api_publish(report_id):
     with PUBLISH_LOCK:
         PUBLISH_JOBS[publish_job_id] = {
             "status": "running", "phase": "Připravuji publikaci…", "current": 0,
-            "total": 0, "result": None, "error": None, "started_at": time.time(),
+            "total": 0, "progress_percent": 1, "result": None, "error": None,
+            "started_at": time.time(),
         }
     threading.Thread(target=_run_publish_job, args=(publish_job_id, report_id, sections), daemon=True).start()
     return jsonify({"publish_job_id": publish_job_id})
@@ -563,7 +640,7 @@ def api_publish_progress(publish_job_id):
         job = dict(PUBLISH_JOBS.get(publish_job_id) or {})
     if not job:
         return jsonify({"error": "Publikační úloha nebyla nalezena."}), 404
-    return jsonify(job)
+    return jsonify(_publish_progress_payload(job))
 
 
 def cleanup_expired_publications(now: dt.datetime | None = None) -> int:

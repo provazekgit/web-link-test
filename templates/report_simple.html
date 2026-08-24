@@ -13,13 +13,13 @@ code{background:#f4f4f4;padding:2px 6px;border-radius:6px}
 <b>Vygenerováno:</b> {{ ts }}<br>
 <b>Celkem URL:</b> {{ total }} · <b>OK:</b> {{ ok_count }} · <b>Fail:</b> {{ failed }}</p>
 <table>
-  <thead><tr><th>URL</th><th>Status</th><th><small style="color:#fff">Čas [ms]</small></th><th>Chyba</th></tr></thead>
+  <thead><tr><th>URL</th><th>Status</th><th><small style="color:#fff">HTTP odezva</small></th><th>Chyba</th></tr></thead>
   <tbody>
     {% for r in rows %}
     <tr class="{{ 'fail' if (r.status == -1 or r.status >= 400) else 'ok' }}">
       <td><a href="{{ r.url }}" target="_blank">{{ r.url }}</a></td>
       <td class="status">{{ r.status }} {% if r.status == 200 %}<span style="color:green">OK</span>{% endif %}</td>
-      <td><small style="color:#f2f3f4">{{ fmt_ms(r.ms, '  ') }}</small></td>
+      <td><small style="color:#f2f3f4">{{ fmt_ms(r.ms, '  ') }} ms ({{ fmt_seconds_from_ms(r.ms) }} s)</small></td>
       <td>{{ r.error }}</td>
     </tr>
     {% endfor %}
