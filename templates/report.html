@@ -2,287 +2,73 @@
 <html lang="cs">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Report kontroly webu – {{ base_url }}</title>
 <style>
-  :root{
-    --ok:#0a8a4a; --ok-bg:#eafbf1; --fail:#c0272d; --fail-bg:#fdecec;
-    --ink:#1c2430; --muted:#5b6472; --line:#e4e7ec; --brand:#2454ff; --card-bg:#ffffff; --page-bg:#f4f6f9;
-  }
-  *{box-sizing:border-box}
-  body{
-    font-family:"Segoe UI",system-ui,Arial,sans-serif;margin:0;padding:0;
-    background:var(--page-bg);color:var(--ink);
-  }
-  .wrap{max-width:1100px;margin:0 auto;padding:32px 24px 60px}
-  header.top{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:24px}
-  header.top h1{font-size:1.5rem;margin:0 0 4px}
-  header.top .meta{color:var(--muted);font-size:.92rem;line-height:1.5}
-  header.top .meta a{color:var(--brand);text-decoration:none}
-  header.top .badge-brand{background:var(--brand);color:#fff;padding:6px 14px;border-radius:999px;font-size:.8rem;font-weight:600;white-space:nowrap}
-
-  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:28px}
-  .stat{background:var(--card-bg);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
-  .stat .num{font-size:1.6rem;font-weight:700;line-height:1.1}
-  .stat .label{color:var(--muted);font-size:.8rem;margin-top:4px}
-  .stat.ok .num{color:var(--ok)}
-  .stat.fail .num{color:var(--fail)}
-
-  section{margin-bottom:32px}
-  h2{font-size:1.15rem;margin:0 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line)}
-
-  table{border-collapse:collapse;width:100%;background:var(--card-bg);border-radius:12px;overflow:hidden;box-shadow:0 1px 2px rgba(20,25,35,.05)}
-  th,td{padding:9px 12px;text-align:left;font-size:.9rem;border-bottom:1px solid var(--line)}
-  th{background:#fafbfc;color:var(--muted);font-weight:600;font-size:.78rem;text-transform:uppercase;letter-spacing:.03em}
-  tr:last-child td{border-bottom:none}
-  td.url a{color:var(--ink);text-decoration:none;word-break:break-all}
-  td.url a:hover{color:var(--brand);text-decoration:underline}
-  .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-weight:700;font-size:.78rem}
-  .badge.ok{background:var(--ok-bg);color:var(--ok)}
-  .badge.fail{background:var(--fail-bg);color:var(--fail)}
-  td.err{color:var(--fail);font-size:.8rem}
-
-  .excluded-box{background:#fff9e8;border:1px solid #f2dfa0;border-radius:12px;padding:14px 18px;font-size:.88rem;color:#6b5300}
-  .excluded-box summary{cursor:pointer;font-weight:600;color:#6b5300}
-  .excluded-box ul{margin:10px 0 0;padding-left:20px;max-height:220px;overflow:auto}
-  .excluded-box li{word-break:break-all;margin-bottom:2px}
-
-  .seo-site{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px}
-  .seo-chip{display:flex;align-items:center;gap:8px;background:var(--card-bg);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-size:.85rem}
-  .seo-chip .dot{width:9px;height:9px;border-radius:50%;flex:none}
-  .seo-chip.ok .dot{background:var(--ok)}
-  .seo-chip.fail .dot{background:var(--fail)}
-  td.seo-val{font-size:.82rem;color:var(--muted)}
-  td.seo-val .txt{color:var(--ink);display:block;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .badge.warn{background:#fff4e0;color:#9a6400}
-
-  .page-card{background:var(--card-bg);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px}
-  .page-card .page-url{font-weight:600;font-size:.92rem;margin-bottom:12px;word-break:break-all}
-  .page-card .page-url a{color:var(--ink);text-decoration:none}
-  .page-card .page-url a:hover{color:var(--brand)}
-  .shots{display:flex;flex-wrap:wrap;gap:12px}
-  .shot{width:150px;text-align:center}
-  .shot img{width:100%;height:110px;object-fit:cover;object-position:top;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;display:block;background:#f0f1f3}
-  .shot .dev{font-size:.72rem;color:var(--muted);margin-top:4px}
-
-  #lightbox{display:none;position:fixed;inset:0;background:rgba(10,14,20,.86);z-index:999;align-items:center;justify-content:center;padding:24px;cursor:zoom-out}
-  #lightbox.open{display:flex}
-  #lightbox img{max-width:100%;max-height:100%;border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,.5)}
-
-  footer{color:var(--muted);font-size:.8rem;text-align:center;margin-top:40px}
-  .custom-footer-text{white-space:pre-line;color:var(--ink);font-size:.88rem;margin-bottom:14px;padding:14px 18px;background:var(--card-bg);border:1px solid var(--line);border-radius:12px;text-align:left}
-  .footer-signature{font-weight:600;font-size:.85rem;margin-bottom:14px}
-
-  .pdf-controls{background:var(--card-bg);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:24px}
-  .pdf-controls .title{font-weight:600;font-size:.85rem;margin-bottom:10px}
-  .pdf-controls .opts{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
-  .pdf-controls label{display:flex;align-items:center;gap:6px;font-size:.85rem;cursor:pointer}
-  .pdf-controls button{margin-left:auto;background:var(--brand);color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:.85rem;font-weight:600;cursor:pointer}
-
-  /* skrytí sloupců/sekcí podle zaškrtávátek – platí i pro náhled, ne jen tisk */
-  body.hide-status .col-status{display:none}
-  body.hide-response .col-response{display:none}
-  body.hide-note .col-note{display:none}
-  body.hide-seo #section-seo{display:none}
-  body.hide-screens #section-screenshots{display:none}
-
-  @media print{
-    body{background:#fff}
-    .shot img{cursor:default}
-    #lightbox{display:none !important}
-    .no-print{display:none !important}
-  }
+:root{--ok:#0a8a4a;--ok-bg:#eafbf1;--fail:#c0272d;--fail-bg:#fdecec;--warn:#9a6400;--warn-bg:#fff4e0;--info:#2454ff;--ink:#1c2430;--muted:#5b6472;--line:#e4e7ec;--brand:#2454ff;--card:#fff;--page:#f4f6f9}
+*{box-sizing:border-box}body{font-family:"Segoe UI",system-ui,Arial,sans-serif;margin:0;background:var(--page);color:var(--ink)}
+.wrap{max-width:1120px;margin:auto;padding:32px 24px 60px}a{color:var(--brand)}header.top{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}h1{font-size:1.55rem;margin:0 0 5px}.meta{color:var(--muted);font-size:.9rem;line-height:1.55}.brand{background:var(--brand);color:#fff;padding:7px 14px;border-radius:999px;font-size:.8rem;font-weight:700;height:max-content}
+.toolbar,.published-banner,.email-panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:22px}.toolbar .opts{display:flex;flex-wrap:wrap;align-items:center;gap:13px}.toolbar label{font-size:.85rem}.toolbar button,.btn{border:0;border-radius:8px;background:var(--brand);color:#fff;padding:9px 15px;font-weight:700;cursor:pointer}.toolbar button.secondary,.btn.secondary{background:#eef1f6;color:var(--ink)}#publishButton{margin-left:auto}.publish-status{font-size:.84rem;color:var(--muted);margin-top:10px}.published-banner{background:#eef4ff;border-color:#bdd0ff;display:flex;justify-content:space-between;gap:14px;align-items:center}.published-banner strong{display:block;margin-bottom:3px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:11px;margin-bottom:28px}.stat{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:15px 17px}.stat .num{font-size:1.55rem;font-weight:750}.stat .label{font-size:.78rem;color:var(--muted);margin-top:3px}.stat.ok .num{color:var(--ok)}.stat.fail .num{color:var(--fail)}
+section{margin-bottom:32px}h2{font-size:1.15rem;margin:0 0 14px;padding-bottom:8px;border-bottom:2px solid var(--line)}table{border-collapse:collapse;width:100%;background:var(--card);border-radius:11px;overflow:hidden}th,td{padding:9px 11px;text-align:left;font-size:.86rem;border-bottom:1px solid var(--line);vertical-align:top}th{background:#fafbfc;color:var(--muted);font-size:.75rem;text-transform:uppercase}td.url a{color:var(--ink);word-break:break-all;text-decoration:none}.badge{display:inline-block;padding:2px 9px;border-radius:999px;font-weight:700;font-size:.75rem}.badge.ok{background:var(--ok-bg);color:var(--ok)}.badge.fail{background:var(--fail-bg);color:var(--fail)}.badge.warn{background:var(--warn-bg);color:var(--warn)}
+.findings{display:grid;gap:10px}.finding{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--info);border-radius:11px;padding:12px 15px}.finding.critical{border-left-color:var(--fail)}.finding.recommended{border-left-color:#e5a000}.finding .finding-head{display:flex;justify-content:space-between;gap:10px;font-weight:700}.finding p{margin:5px 0 0;color:var(--muted);font-size:.84rem}.finding ul{margin:7px 0 0;padding-left:20px;font-size:.78rem;color:var(--muted)}.summary-note{color:var(--muted);font-size:.84rem;margin:0 0 13px}
+.chips{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:14px}.chip{background:var(--card);border:1px solid var(--line);border-radius:9px;padding:7px 11px;font-size:.8rem}.chip.ok{color:var(--ok)}.chip.fail{color:var(--fail)}.txt{display:block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.excluded{background:#fff9e8;border:1px solid #f2dfa0;border-radius:11px;padding:13px 16px;color:#6b5300;font-size:.84rem}.excluded summary{cursor:pointer;font-weight:700}
+.page-card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:15px 17px;margin-bottom:15px}.page-url{font-weight:650;font-size:.88rem;margin-bottom:11px;word-break:break-all}.shots{display:flex;flex-wrap:wrap;gap:11px}.shot{width:150px;text-align:center}.shot img{width:100%;height:110px;object-fit:cover;object-position:top;border:1px solid var(--line);border-radius:8px;display:block;cursor:zoom-in;background:#eee}.dev{font-size:.7rem;color:var(--muted);margin-top:4px}#lightbox{display:none;position:fixed;inset:0;background:#0a0e14dd;z-index:999;align-items:center;justify-content:center;padding:24px;cursor:zoom-out}#lightbox.open{display:flex}#lightbox img{max-width:100%;max-height:100%;border-radius:8px}
+.email-panel{display:none}.email-panel.show{display:block}.email-panel h2{border:0;padding:0}.field{margin:10px 0}.field label{display:block;font-weight:700;font-size:.8rem;margin-bottom:4px}.copy-row{display:flex;gap:8px}.copy-row input,.copy-row textarea{flex:1;border:1px solid var(--line);border-radius:8px;padding:9px;font:inherit}.copy-row textarea{min-height:150px;resize:vertical}.copy-row .btn{height:max-content}.small textarea{min-height:70px}footer{text-align:center;color:var(--muted);font-size:.78rem;margin-top:38px}.custom-footer{white-space:pre-line;text-align:left;background:var(--card);border:1px solid var(--line);padding:13px 16px;border-radius:11px;margin-bottom:13px}.footer-signature{font-weight:650;margin-bottom:12px}
+body.hide-status .col-status,body.hide-response .col-response,body.hide-note .col-note,body.hide-summary #section-summary,body.hide-seo #section-seo,body.hide-technical #section-technical,body.hide-screens #section-screenshots{display:none}
+@media(max-width:700px){.wrap{padding:20px 12px}.table-wrap{overflow:auto}#publishButton{margin-left:0}.published-banner{align-items:flex-start;flex-direction:column}.copy-row{flex-direction:column}}
+@media print{body{background:#fff}.wrap{max-width:none;padding:0}.no-print,#lightbox,.email-panel{display:none!important}.shot img{cursor:default}.page-card,.finding,.stat{break-inside:avoid}a{text-decoration:none;color:inherit}}
 </style>
 </head>
-<body>
-<div class="wrap">
+<body><div class="wrap">
+<header class="top"><div><h1>Report kontroly webu</h1><div class="meta"><b>Testovaný web:</b> <a href="{{ base_url }}">{{ base_url }}</a><br><b>Vygenerováno:</b> {{ generated_display }}{% if duration_text %} · <b>doba testu:</b> {{ duration_text }}{% endif %}</div></div><div class="brand">Automatický audit webu</div></header>
 
-  <header class="top">
-    <div>
-      <h1>Report kontroly webu</h1>
-      <div class="meta">
-        <b>Testovaný web:</b> <a href="{{ base_url }}" target="_blank" rel="noopener">{{ base_url }}</a><br>
-        <b>Vygenerováno:</b> {{ generated_display }}{% if duration_text %} · <b>doba testu:</b> {{ duration_text }}{% endif %}
-      </div>
-    </div>
-    <div class="badge-brand">Automatický test odkazů &amp; vzhledu</div>
-  </header>
+{% if is_published %}
+<div class="published-banner no-print"><div><strong>Klientská verze reportu</strong>Report je dostupný do {{ expires_display }}.</div><a class="btn" href="report.pdf" download>Stáhnout PDF</a></div>
+{% else %}
+<div class="toolbar no-print"><b>Obsah klientské verze a PDF</b><div class="opts" style="margin-top:10px">
+  <label><input type="checkbox" data-toggle="status" value="status" checked> Stav</label>
+  <label><input type="checkbox" data-toggle="response" value="response" checked> HTTP odezva</label>
+  <label><input type="checkbox" data-toggle="note" value="note" checked> Poznámky</label>
+  <label><input type="checkbox" data-toggle="summary" value="summary" checked> Souhrn</label>
+  {% if seo_pages %}<label><input type="checkbox" data-toggle="seo" value="seo" checked> SEO</label><label><input type="checkbox" data-toggle="technical" value="technical" checked> Technika</label>{% endif %}
+  {% if pages_gallery %}<label><input type="checkbox" data-toggle="screens" value="screens" checked> Screenshoty</label>{% endif %}
+  <button class="secondary" type="button" onclick="window.print()">Vytisknout náhled</button>
+  <button id="publishButton" type="button">Publikovat pro klienta</button>
+</div><div id="publishStatus" class="publish-status">Publikace vyžaduje nastavené Bunny.net údaje v souboru .env.</div></div>
+{% endif %}
 
-  <div class="pdf-controls no-print">
-    <div class="title">Co má obsahovat PDF (a náhled níže)</div>
-    <div class="opts">
-      <label><input type="checkbox" data-toggle="status" checked> Stav</label>
-      <label><input type="checkbox" data-toggle="response" checked> Odezva</label>
-      <label><input type="checkbox" data-toggle="note" checked> Poznámky</label>
-      {% if seo_pages %}<label><input type="checkbox" data-toggle="seo" checked> SEO</label>{% endif %}
-      {% if pages_gallery %}<label><input type="checkbox" data-toggle="screens" checked> Screenshoty</label>{% endif %}
-      <button type="button" onclick="window.print()">🖨 Stáhnout / vytisknout PDF</button>
-    </div>
-  </div>
+<div class="stats"><div class="stat"><div class="num">{{ total }}</div><div class="label">Zkontrolováno stránek</div></div>{% if 'status' in sections %}<div class="stat ok col-status"><div class="num">{{ ok_count }}</div><div class="label">Funguje bez problémů</div></div><div class="stat fail col-status"><div class="num">{{ failed }}</div><div class="label">Vyžaduje pozornost</div></div>{% endif %}{% if 'response' in sections %}<div class="stat col-response"><div class="num">{{ fmt_ms(avg_ms) }} ms</div><div class="label">Průměrná HTTP odezva</div></div>{% endif %}</div>
 
-  <div class="stats">
-    <div class="stat"><div class="num">{{ total }}</div><div class="label">Zkontrolováno stránek</div></div>
-    <div class="stat ok col-status"><div class="num">{{ ok_count }}</div><div class="label">Funguje bez problémů</div></div>
-    <div class="stat fail col-status"><div class="num">{{ failed }}</div><div class="label">Vyžaduje pozornost</div></div>
-    <div class="stat col-response"><div class="num">{{ fmt_ms(avg_ms) }} ms</div><div class="label">Průměrná odezva</div></div>
-    {% if excluded_urls %}
-    <div class="stat"><div class="num">{{ excluded_urls|length }}</div><div class="label">Vynecháno z testu</div></div>
-    {% endif %}
-  </div>
+{% if findings and 'summary' in sections %}<section id="section-summary"><h2>Souhrn a priority</h2><p class="summary-note">{{ summary.critical_count }} kritických · {{ summary.recommended_count }} doporučených · {{ summary.informational_count }} informativních oblastí. Nejde o celkové skóre webu.</p><div class="findings">{% for finding in findings %}<div class="finding {{ finding.severity }}"><div class="finding-head"><span>{{ finding.title }}</span><span class="badge {{ 'fail' if finding.severity == 'critical' else ('warn' if finding.severity == 'recommended' else 'ok') }}">{{ finding.count }}×</span></div><p>{{ finding.detail }}</p>{% if finding.examples %}<ul>{% for url in finding.examples %}<li>{{ url }}</li>{% endfor %}</ul>{% endif %}</div>{% endfor %}</div></section>{% endif %}
 
-  <section>
-    <h2>Přehled stránek</h2>
-    <table>
-      <thead>
-        <tr><th>URL</th><th class="col-status">Stav</th><th class="col-response">Odezva</th><th class="col-note">Poznámka</th></tr>
-      </thead>
-      <tbody>
-        {% for r in rows %}
-        {% set is_fail = (r.status == -1 or r.status >= 400) %}
-        <tr>
-          <td class="url"><a href="{{ r.url }}" target="_blank" rel="noopener">{{ r.url }}</a></td>
-          <td class="col-status">
-            {% if is_fail %}
-              <span class="badge fail">{{ r.status if r.status != -1 else 'CHYBA' }}</span>
-            {% else %}
-              <span class="badge ok">{{ r.status }} OK</span>
-            {% endif %}
-          </td>
-          <td class="col-response">{{ fmt_ms(r.ms, ' ') }} ms</td>
-          <td class="col-note err">{{ r.error }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </section>
+<section><h2>Přehled stránek</h2><div class="table-wrap"><table><thead><tr><th>URL</th>{% if 'status' in sections %}<th class="col-status">Stav</th>{% endif %}{% if 'response' in sections %}<th class="col-response">HTTP odezva</th>{% endif %}{% if 'note' in sections %}<th class="col-note">Poznámka</th>{% endif %}</tr></thead><tbody>{% for r in rows %}{% set is_fail = (r.status == -1 or r.status >= 400) %}<tr><td class="url"><a href="{{ r.url }}">{{ r.url }}</a></td>{% if 'status' in sections %}<td class="col-status"><span class="badge {{ 'fail' if is_fail else 'ok' }}">{{ r.status if r.status != -1 else 'CHYBA' }}{% if not is_fail %} OK{% endif %}</span></td>{% endif %}{% if 'response' in sections %}<td class="col-response">{{ fmt_ms(r.ms, ' ') }} ms</td>{% endif %}{% if 'note' in sections %}<td class="col-note">{{ r.error }}</td>{% endif %}</tr>{% endfor %}</tbody></table></div></section>
 
-  {% if excluded_urls %}
-  <section>
-    <details class="excluded-box">
-      <summary>{{ excluded_urls|length }} stránka(y) záměrně vynechána z testu – vyžadují přihlášení, jsou to košík/administrace, nebo to nejsou skutečné stránky (např. „přidat do košíku")</summary>
-      <ul>
-        {% for u in excluded_urls %}<li>{{ u }}</li>{% endfor %}
-      </ul>
-    </details>
-  </section>
-  {% endif %}
+{% if excluded_urls %}<section><details class="excluded"><summary>{{ excluded_urls|length }} stránek bylo záměrně vynecháno</summary><p>Jde například o přihlášení, košík, administraci nebo technické odkazy.</p><ul>{% for url in excluded_urls %}<li>{{ url }}</li>{% endfor %}</ul></details></section>{% endif %}
 
-  {% if seo_pages %}
-  <section id="section-seo">
-    <h2>SEO &amp; indexace</h2>
+{% if seo_pages and 'seo' in sections %}<section id="section-seo"><h2>SEO a indexace</h2><div class="chips"><div class="chip {{ 'ok' if seo_site.robots_ok and not seo_site.robots_blocks_all else 'fail' }}">robots.txt: {{ 'v pořádku' if seo_site.robots_ok and not seo_site.robots_blocks_all else 'vyžaduje kontrolu' }}</div><div class="chip {{ 'ok' if seo_site.sitemap_ok else 'fail' }}">sitemap.xml: {{ 'nalezena' if seo_site.sitemap_ok else 'nenalezena' }}</div></div><div class="table-wrap"><table><thead><tr><th>Stránka</th><th>Title</th><th>Meta popis</th><th>H1</th><th>Canonical</th><th>Indexace</th></tr></thead><tbody>{% for p in seo_pages %}<tr><td class="url"><a href="{{ p.url }}">{{ p.url }}</a></td><td>{% if p.title %}<span class="txt" title="{{ p.title }}">{{ p.title }}</span><span class="badge {{ 'ok' if p.title_ok and not p.title_duplicate else 'warn' }}">{{ p.title_len }} znaků{% if p.title_duplicate %}, duplicita{% endif %}</span>{% else %}<span class="badge fail">chybí</span>{% endif %}</td><td>{% if p.description %}<span class="txt" title="{{ p.description }}">{{ p.description }}</span><span class="badge {{ 'ok' if p.description_ok and not p.description_duplicate else 'warn' }}">{{ p.description_len }} znaků{% if p.description_duplicate %}, duplicita{% endif %}</span>{% else %}<span class="badge fail">chybí</span>{% endif %}</td><td><span class="badge {{ 'ok' if p.h1_ok else 'warn' }}">{{ p.h1_count }}×</span></td><td>{% if not p.canonical %}<span class="badge fail">chybí</span>{% elif p.canonical_matches %}<span class="badge ok">na sebe</span>{% else %}<span class="badge warn">jiná URL</span>{% endif %}</td><td><span class="badge {{ 'fail' if p.noindex else 'ok' }}">{{ 'noindex' if p.noindex else 'indexovatelná' }}</span></td></tr>{% endfor %}</tbody></table></div><p class="summary-note">Kontrola proběhla na stabilním vzorku nejvýše 50 dostupných stránek. Canonical nebo noindex mohou být záměrné a proto vyžadují lidské posouzení.</p></section>{% endif %}
 
-    <div class="seo-site">
-      <div class="seo-chip {{ 'ok' if seo_site.robots_ok and not seo_site.robots_blocks_all else 'fail' }}">
-        <span class="dot"></span>
-        {% if not seo_site.robots_ok %}robots.txt nenalezen
-        {% elif seo_site.robots_blocks_all %}robots.txt blokuje CELÝ web!
-        {% else %}robots.txt v pořádku{% endif %}
-      </div>
-      <div class="seo-chip {{ 'ok' if seo_site.sitemap_ok else 'fail' }}">
-        <span class="dot"></span>
-        {{ 'sitemap.xml nalezen' if seo_site.sitemap_ok else 'sitemap.xml nenalezen' }}
-      </div>
-    </div>
+{% if seo_pages and 'technical' in sections %}<section id="section-technical"><h2>Technické a přístupnostní signály</h2><div class="chips"><div class="chip {{ 'ok' if seo_site.https_redirect else 'fail' }}">HTTP → HTTPS: {{ 'ano' if seo_site.https_redirect else 'neověřeno / ne' }}</div>{% for name,present in seo_site.security_headers.items() %}<div class="chip {{ 'ok' if present else 'fail' }}">{{ name }}: {{ 'ano' if present else 'chybí' }}</div>{% endfor %}</div><div class="table-wrap"><table><thead><tr><th>Stránka</th><th>Jazyk</th><th>Viewport</th><th>Obrázky bez alt</th><th>Mixed content</th><th>OG</th><th>JSON-LD</th></tr></thead><tbody>{% for p in seo_pages %}<tr><td class="url"><a href="{{ p.url }}">{{ p.url }}</a></td><td><span class="badge {{ 'ok' if p.lang else 'warn' }}">{{ p.lang or 'chybí' }}</span></td><td><span class="badge {{ 'ok' if p.viewport else 'warn' }}">{{ 'ano' if p.viewport else 'chybí' }}</span></td><td><span class="badge {{ 'ok' if not p.images_missing_alt else 'warn' }}">{{ p.images_missing_alt }}/{{ p.images_total }}</span></td><td><span class="badge {{ 'ok' if not p.mixed_content_count else 'fail' }}">{{ p.mixed_content_count }}</span></td><td>{{ 'ano' if p.open_graph else 'ne' }}</td><td>{{ 'ano' if p.structured_data else 'ne' }}</td></tr>{% endfor %}</tbody></table></div></section>{% endif %}
 
-    <table>
-      <thead>
-        <tr><th>Stránka</th><th>Title</th><th>Meta popis</th><th>H1</th><th>Canonical</th><th>Indexace</th></tr>
-      </thead>
-      <tbody>
-        {% for p in seo_pages %}
-        <tr>
-          <td class="url"><a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.url }}</a></td>
-          <td class="seo-val">
-            {% if p.title %}
-              <span class="txt" title="{{ p.title }}">{{ p.title }}</span>
-              <span class="badge {{ 'ok' if p.title_ok else 'warn' }}">{{ p.title_len }} znaků</span>
-            {% else %}<span class="badge fail">chybí title</span>{% endif %}
-          </td>
-          <td class="seo-val">
-            {% if p.description %}
-              <span class="txt" title="{{ p.description }}">{{ p.description }}</span>
-              <span class="badge {{ 'ok' if p.description_ok else 'warn' }}">{{ p.description_len }} znaků</span>
-            {% else %}<span class="badge fail">chybí popis</span>{% endif %}
-          </td>
-          <td class="seo-val"><span class="badge {{ 'ok' if p.h1_ok else 'warn' }}">{{ p.h1_count }}×</span></td>
-          <td class="seo-val">
-            {% if not p.canonical %}
-              <span class="badge fail">chybí</span>
-            {% elif p.canonical_matches %}
-              <span class="badge ok">na sebe</span>
-            {% else %}
-              <span class="txt" title="{{ p.canonical }}">{{ p.canonical }}</span>
-              <span class="badge warn">jiná stránka</span>
-            {% endif %}
-          </td>
-          <td class="seo-val">
-            {% if p.noindex %}<span class="badge fail">noindex!</span>{% else %}<span class="badge ok">indexovatelná</span>{% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    <p style="color:var(--muted);font-size:.78rem;margin-top:10px">
-      Doporučené délky: title {{ "%d–%d"|format(10, 60) }} znaků, meta popis 50–160 znaků, přesně jedno H1 na stránku.
-      Canonical „jiná stránka" nemusí být chyba (např. u filtrů/stránkování), ale stojí za kontrolu – může znamenat,
-      že Google indexuje jinou verzi stránky, než čekáte.
-      Kontrola proběhla na nejnavštěvovanějších stránkách webu (stejná sada jako screenshoty).
-    </p>
-  </section>
-  {% endif %}
+{% if pages_gallery and 'screens' in sections %}<section id="section-screenshots"><h2>Screenshoty</h2>{% for page in pages_gallery %}<div class="page-card"><div class="page-url">{% if page.url %}<a href="{{ page.url }}">{{ page.url }}</a>{% else %}Ostatní snímky{% endif %}</div><div class="shots">{% for s in page.shots %}<div class="shot"><a href="{{ s.full_url if s.full_url else s.full_rel }}" target="_blank"><img src="{{ s.rel }}" alt="{{ s.device }}" onclick="event.preventDefault();openLightbox('{{ s.full_url if s.full_url else s.full_rel }}')"></a><div class="dev">{{ s.device }}</div></div>{% endfor %}</div></div>{% endfor %}</section>{% endif %}
 
-  {% if pages_gallery %}
-  <section id="section-screenshots">
-    <h2>Screenshoty</h2>
-    {% for page in pages_gallery %}
-    <div class="page-card">
-      <div class="page-url">
-        {% if page.url %}<a href="{{ page.url }}" target="_blank" rel="noopener">{{ page.url }}</a>{% else %}Ostatní snímky{% endif %}
-      </div>
-      <div class="shots">
-        {% for s in page.shots %}
-        <div class="shot">
-          <img src="{{ s.rel }}" alt="{{ s.device }}" loading="lazy" onclick="openLightbox('{{ s.rel }}')">
-          <div class="dev">{{ s.device }}</div>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-    {% endfor %}
-  </section>
-  {% endif %}
+{% if not is_published %}<div id="emailPanel" class="email-panel no-print"><h2>Podklady pro e-mail</h2><p id="expiryText" class="summary-note"></p><div class="field"><label>E-mail klienta</label><div class="copy-row"><input id="emailRecipient"><button class="btn secondary" data-copy="emailRecipient">Kopírovat</button></div></div><div class="field"><label>Předmět</label><div class="copy-row"><input id="emailSubject"><button class="btn secondary" data-copy="emailSubject">Kopírovat</button></div></div><div class="field small"><label>Krátký popis výsledku</label><div class="copy-row"><textarea id="emailShort"></textarea><button class="btn secondary" data-copy="emailShort">Kopírovat</button></div></div><div class="field"><label>Celý koncept e-mailu</label><div class="copy-row"><textarea id="emailBody"></textarea><button class="btn secondary" data-copy="emailBody">Kopírovat</button></div></div><div class="field"><label>Odkaz na report</label><div class="copy-row"><input id="publishedUrl" readonly><button class="btn secondary" data-copy="publishedUrl">Kopírovat</button><a id="openPublished" class="btn" target="_blank">Otevřít</a></div></div></div>{% endif %}
 
-  <footer>
-    {% if footer_text %}
-    <div class="custom-footer-text" {% if footer_color %}style="color:{{ footer_color }}"{% endif %}>{{ footer_text }}</div>
-    {% endif %}
-    {% if footer_signature or footer_date %}
-    <div class="footer-signature" {% if footer_color %}style="color:{{ footer_color }}"{% endif %}>
-      {% if footer_signature %}{{ footer_signature }}{% endif %}
-      {% if footer_signature and footer_date %} · {% endif %}
-      {% if footer_date %}{{ footer_date }}{% endif %}
-    </div>
-    {% endif %}
-    Vygenerováno automatickým nástrojem pro kontrolu odkazů a vzhledu webu.
-    {% if simple_report_url %}<br><a href="{{ simple_report_url }}">Zobrazit jednoduchou verzi reportu (prostá tabulka)</a>{% endif %}
-  </footer>
+<footer>{% if footer_text %}<div class="custom-footer" {% if footer_color %}style="color:{{ footer_color }}"{% endif %}>{{ footer_text }}</div>{% endif %}{% if footer_signature or footer_date %}<div class="footer-signature" {% if footer_color %}style="color:{{ footer_color }}"{% endif %}>{{ footer_signature }}{% if footer_signature and footer_date %} · {% endif %}{{ footer_date }}</div>{% endif %}Vygenerováno automatickým nástrojem pro kontrolu dostupnosti, technických signálů a vzhledu webu.</footer>
 </div>
-
-<div id="lightbox" onclick="closeLightbox()"><img id="lightboxImg" src="" alt=""></div>
+<div id="lightbox" onclick="closeLightbox()"><img id="lightboxImg" alt="Plný screenshot"></div>
 <script>
-  function openLightbox(src){
-    document.getElementById('lightboxImg').src = src;
-    document.getElementById('lightbox').classList.add('open');
-  }
-  function closeLightbox(){
-    document.getElementById('lightbox').classList.remove('open');
-  }
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
-
-  document.querySelectorAll('.pdf-controls input[data-toggle]').forEach(cb => {
-    cb.addEventListener('change', () => {
-      document.body.classList.toggle('hide-' + cb.dataset.toggle, !cb.checked);
-    });
-  });
-</script>
-</body>
-</html>
+function openLightbox(src){document.getElementById('lightboxImg').src=src;document.getElementById('lightbox').classList.add('open')}
+function closeLightbox(){document.getElementById('lightbox').classList.remove('open')}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeLightbox()});
+{% if not is_published %}
+document.querySelectorAll('[data-toggle]').forEach(cb=>cb.addEventListener('change',()=>document.body.classList.toggle('hide-'+cb.dataset.toggle,!cb.checked)));
+const publishButton=document.getElementById('publishButton'),publishStatus=document.getElementById('publishStatus');
+function selectedSections(){return Array.from(document.querySelectorAll('[data-toggle]:checked')).map(cb=>cb.value)}
+function pollPublish(id){fetch('/api/publish-progress/'+id).then(r=>r.json()).then(data=>{if(data.status==='done'){publishButton.disabled=false;publishStatus.textContent='Hotovo. Odkaz a koncept e-mailu jsou připravené.';showEmail(data.result);return}if(data.status==='error'){publishButton.disabled=false;publishStatus.textContent='Chyba: '+(data.error||'publikace selhala');return}publishStatus.textContent=data.phase||'Publikuji…';setTimeout(()=>pollPublish(id),1000)}).catch(()=>setTimeout(()=>pollPublish(id),1500))}
+publishButton.addEventListener('click',()=>{publishButton.disabled=true;publishStatus.textContent='Zahajuji publikaci…';fetch('/api/publish/{{ report_id }}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sections:selectedSections()})}).then(async r=>({ok:r.ok,data:await r.json()})).then(({ok,data})=>{if(!ok)throw new Error(data.error||'Publikaci nelze spustit.');pollPublish(data.publish_job_id)}).catch(err=>{publishButton.disabled=false;publishStatus.textContent='Chyba: '+err.message})});
+function showEmail(result){const email=result.email||{};document.getElementById('emailRecipient').value=email.recipient||'';document.getElementById('emailSubject').value=email.subject||'';document.getElementById('emailShort').value=email.short_description||'';document.getElementById('emailBody').value=email.body||'';document.getElementById('publishedUrl').value=result.report_url||'';document.getElementById('openPublished').href=result.report_url||'#';document.getElementById('expiryText').textContent='Report je dostupný do '+result.expires_display+'. Nic nebylo automaticky odesláno.';document.getElementById('emailPanel').classList.add('show');document.getElementById('emailPanel').scrollIntoView({behavior:'smooth'})}
+async function copyField(id,button){const field=document.getElementById(id);try{await navigator.clipboard.writeText(field.value);const old=button.textContent;button.textContent='Zkopírováno';setTimeout(()=>button.textContent=old,1400)}catch(e){field.select();document.execCommand('copy')}}
+document.querySelectorAll('[data-copy]').forEach(button=>button.addEventListener('click',()=>copyField(button.dataset.copy,button)));
+{% endif %}
+</script></body></html>

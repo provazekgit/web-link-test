@@ -6,6 +6,10 @@ import uuid
 import threading
 import traceback
 import webbrowser
+import copy
+import datetime as dt
+import json
+import shutil
 from flask import Flask, render_template, request, send_from_directory, jsonify
 from dotenv import load_dotenv
 from utils import requires_auth, fmt_duration
@@ -13,6 +17,11 @@ import scanner
 from lib.url_utils import canonical_url as _canonical_url
 from pdf_render import html_to_pdf
 from urllib.parse import urlparse, urljoin
+from pathlib import Path
+from lib.publishing import (
+    BunnyConfig, BunnyStorageClient, make_email_draft, publication_times,
+    safe_report_dir, sign_directory_url,
+)
 
 # ---------------------------------------------------------------
 # Pomocné funkce
@@ -59,6 +68,8 @@ app = Flask(__name__)
 JOB_STEPS = 5  # 1 hledání stránek, 2 kontrola odkazů, 3 screenshoty, 4 SEO, 5 report/PDF
 JOBS: dict = {}
 JOBS_LOCK = threading.Lock()
+PUBLISH_JOBS: dict = {}
+PUBLISH_LOCK = threading.Lock()
 
 
 def _job_init(job_id: str) -> None:
@@ -129,11 +140,14 @@ def run():
     footer_signature = request.form.get("footer_signature", "").strip() or None
     footer_date = request.form.get("footer_date", "").strip() or None
     footer_color = request.form.get("footer_color", "").strip()
+    client_email = request.form.get("client_email", "").strip()
     if not re.fullmatch(r"#[0-9a-fA-F]{6}", footer_color or ""):
         footer_color = None
 
     if not base_url:
         return jsonify({"error": "Zadej Base URL"}), 400
+    if client_email and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", client_email):
+        return jsonify({"error": "E-mail klienta nemá platný formát."}), 400
 
     base_url = _with_scheme(base_url)
     if sitemap:
@@ -149,7 +163,7 @@ def run():
     threading.Thread(
         target=_run_job,
         args=(job_id, base_url, sitemap, do_screens, raw_screens, devices,
-              footer_text, footer_signature, footer_date, footer_color),
+              footer_text, footer_signature, footer_date, footer_color, client_email),
         daemon=True,
     ).start()
 
@@ -157,7 +171,7 @@ def run():
 
 
 def _run_job(job_id, base_url, sitemap, do_screens, raw_screens, devices,
-             footer_text, footer_signature, footer_date, footer_color):
+             footer_text, footer_signature, footer_date, footer_color, client_email):
     """Odpovídá bývalému synchronnímu tělu /run – běží ve vlastním vlákně
     a průběžně zapisuje stav do JOBS, aby ho mohl frontend odsledovat.
 
@@ -167,11 +181,11 @@ def _run_job(job_id, base_url, sitemap, do_screens, raw_screens, devices,
     """
     with app.app_context():
         _run_job_body(job_id, base_url, sitemap, do_screens, raw_screens, devices,
-                      footer_text, footer_signature, footer_date, footer_color)
+                      footer_text, footer_signature, footer_date, footer_color, client_email)
 
 
 def _run_job_body(job_id, base_url, sitemap, do_screens, raw_screens, devices,
-                   footer_text, footer_signature, footer_date, footer_color):
+                   footer_text, footer_signature, footer_date, footer_color, client_email):
     started_at = time.time()
     try:
         # --- 1) Získání odkazů (stránky vyžadující přihlášení se
@@ -186,11 +200,12 @@ def _run_job_body(job_id, base_url, sitemap, do_screens, raw_screens, devices,
             _job_set(job_id, current=done, total=total, phase=f"Kontroluji odkazy ({done}/{total})…")
 
         rows = scanner.check_links(urls, on_progress=on_link_progress)
-        tested_urls = list({row["url"] for row in rows})
+        tested_urls = [row["url"] for row in rows]
         pages_count = len(tested_urls)
 
         screens_manifest = []
-        top_pages = tested_urls[:5]
+        successful_urls = [row["url"] for row in rows if row["status"] != -1 and row["status"] < 400]
+        top_pages = successful_urls[:5]
         top_seen = {_canonical_url(u) for u in top_pages}
 
         # --- 3) Založ finální složku reportu a screenshoty ukládej rovnou tam ---
@@ -266,7 +281,7 @@ def _run_job_body(job_id, base_url, sitemap, do_screens, raw_screens, devices,
         try:
             from lib import seo
 
-            seo_pages = seo.analyze_pages(top_pages)
+            seo_pages = seo.analyze_pages(successful_urls[:50], max_workers=scanner.MAX_CONCURRENT_REQUESTS)
             seo_site = seo.check_site_indexing(base_url)
         except Exception as e:
             print(f"[seo] přeskočeno: {e}")
@@ -288,6 +303,7 @@ def _run_job_body(job_id, base_url, sitemap, do_screens, raw_screens, devices,
             footer_signature=footer_signature,
             footer_date=footer_date,
             footer_color=footer_color,
+            client_email=client_email,
         )
 
         # --- 7) Vytvoření PDF z HTML reportu ---
@@ -321,6 +337,7 @@ def _run_job_body(job_id, base_url, sitemap, do_screens, raw_screens, devices,
                 "report_url": report_url,
                 "simple_report_url": simple_report_url,
                 "duration": duration_text,
+                "report_id": rel,
             },
         )
     except Exception as e:
@@ -357,6 +374,248 @@ def api_progress(job_id):
         "error": job.get("error"),
     })
 
+
+# ---------------------------------------------------------------
+# PUBLIKACE KLIENTSKÉ VERZE
+# ---------------------------------------------------------------
+
+def _save_report_data(report_dir: Path, data: dict) -> None:
+    target = report_dir / "report.json"
+    temporary = report_dir / "report.json.tmp"
+    with temporary.open("w", encoding="utf-8") as stream:
+        json.dump(data, stream, ensure_ascii=False, indent=2)
+    os.replace(temporary, target)
+
+
+def _sanitize_public_data(data: dict, sections: set[str]) -> dict:
+    public_data = copy.deepcopy(data)
+    public_data.pop("client_email", None)
+    public_data.pop("publications", None)
+    public_data["selected_sections"] = sorted(sections)
+    row_fields = {"url"}
+    if "status" in sections:
+        row_fields.add("status")
+    if "response" in sections:
+        row_fields.add("ms")
+    if "note" in sections:
+        row_fields.add("error")
+    public_data["rows"] = [{key: value for key, value in row.items() if key in row_fields} for row in public_data.get("rows", [])]
+    if "summary" not in sections:
+        public_data["findings"] = []
+        public_data["summary"] = {"pages_count": len(public_data["rows"])}
+
+    seo_fields = {"url", "title", "title_len", "title_ok", "title_duplicate", "description", "description_len", "description_ok", "description_duplicate", "h1_count", "h1_ok", "noindex", "canonical", "canonical_matches", "error"}
+    technical_fields = {"url", "lang", "viewport", "images_total", "images_missing_alt", "mixed_content_count", "open_graph", "structured_data", "error"}
+    page_fields = set()
+    if "seo" in sections:
+        page_fields |= seo_fields
+    if "technical" in sections:
+        page_fields |= technical_fields
+    public_data["seo_pages"] = [
+        {key: value for key, value in page.items() if key in page_fields}
+        for page in public_data.get("seo_pages", [])
+    ] if page_fields else []
+    site_fields = set()
+    if "seo" in sections:
+        site_fields |= {"robots_ok", "robots_blocks_all", "sitemap_ok"}
+    if "technical" in sections:
+        site_fields |= {"https_redirect", "security_headers"}
+    public_data["seo_site"] = {key: value for key, value in public_data.get("seo_site", {}).items() if key in site_fields}
+    return public_data
+
+
+def _create_public_bundle(report_dir: Path, stage_dir: Path, data: dict, sections: set[str], report_url: str, expires_display: str) -> dict:
+    from PIL import Image
+
+    stage_dir.mkdir(parents=True, exist_ok=False)
+    public_data = _sanitize_public_data(data, sections)
+
+    if "screens" in sections:
+        (stage_dir / "screens").mkdir()
+        (stage_dir / "thumbs").mkdir()
+        valid_shots = []
+        for shot in public_data.get("screenshots", []):
+            filename = str(shot.get("file", ""))
+            source = report_dir / "screens" / filename
+            if not source.is_file() or source.suffix.lower() != ".png":
+                continue
+            shutil.copy2(source, stage_dir / "screens" / filename)
+            thumb_path = stage_dir / "thumbs" / f"{source.stem}.webp"
+            with Image.open(source) as image:
+                image.thumbnail((420, 900))
+                image.save(thumb_path, "WEBP", quality=78, method=4)
+            valid_shots.append(shot)
+        public_data["screenshots"] = valid_shots
+    else:
+        public_data["screenshots"] = []
+
+    scanner.render_report(
+        public_data, str(stage_dir / "index.html"), sections=sections,
+        is_published=True, expires_display=expires_display, published_report_url=report_url,
+    )
+    html_to_pdf(str(stage_dir / "index.html"), str(stage_dir / "report.pdf"))
+    with (stage_dir / "report.json").open("w", encoding="utf-8") as stream:
+        json.dump(public_data, stream, ensure_ascii=False, indent=2)
+    return public_data
+
+
+def _run_publish_job(publish_job_id: str, report_id: str, sections: set[str]) -> None:
+    with app.app_context():
+        stage_dir: Path | None = None
+        remote_dir = ""
+        client: BunnyStorageClient | None = None
+        try:
+            config = BunnyConfig.from_env()
+            report_dir = safe_report_dir(REPORTS_ROOT, report_id)
+            data = scanner.load_report(str(report_dir))
+            if int(data.get("schema_version") or 0) < 2:
+                raise ValueError("Tento starší report nelze publikovat. Spusťte nový test.")
+
+            publication_id = uuid.uuid4().hex
+            remote_dir = f"{config.remote_prefix}/{publication_id}"
+            published_at, expires_at = publication_times(config)
+            expires_display = expires_at.astimezone().strftime("%d.%m.%Y %H:%M")
+            report_url = sign_directory_url(
+                config.cdn_base_url, config.token_key, remote_dir, "index.html", int(expires_at.timestamp())
+            )
+            stage_dir = report_dir / "published" / publication_id
+            with PUBLISH_LOCK:
+                PUBLISH_JOBS[publish_job_id].update(phase="Připravuji klientskou verzi…")
+            public_data = _create_public_bundle(report_dir, stage_dir, data, sections, report_url, expires_display)
+
+            client = BunnyStorageClient(config)
+            def on_upload(done: int, total: int) -> None:
+                with PUBLISH_LOCK:
+                    PUBLISH_JOBS[publish_job_id].update(
+                        current=done, total=total, phase=f"Nahrávám na Bunny ({done}/{total})…"
+                    )
+            client.upload_tree(stage_dir, remote_dir, on_progress=on_upload)
+
+            delete_after = published_at + dt.timedelta(days=config.retention_days)
+            entry = {
+                "id": publication_id, "remote_dir": remote_dir,
+                "local_dir": f"published/{publication_id}",
+                "published_at": published_at.isoformat(), "expires_at": expires_at.isoformat(),
+                "delete_after": delete_after.isoformat(), "sections": sorted(sections),
+            }
+            data.setdefault("publications", []).append(entry)
+            _save_report_data(report_dir, data)
+            email = make_email_draft(
+                str(data.get("base_url", "")), str(data.get("client_email", "")),
+                dict(data.get("summary") or {}), report_url, expires_display,
+            )
+            result = {
+                "report_url": report_url, "expires_at": expires_at.isoformat(),
+                "expires_display": expires_display, "email": email,
+            }
+            with PUBLISH_LOCK:
+                PUBLISH_JOBS[publish_job_id].update(status="done", phase="Publikováno", result=result)
+            try:
+                cleanup_expired_publications()
+            except Exception:
+                # Publikace je už úspěšná; případný úklid se zopakuje při
+                # dalším startu nebo v denním retenčním běhu.
+                traceback.print_exc()
+        except Exception as exc:
+            traceback.print_exc()
+            if client and remote_dir:
+                try:
+                    client.delete_directory(remote_dir)
+                except Exception:
+                    pass
+            if stage_dir and stage_dir.is_dir():
+                shutil.rmtree(stage_dir, ignore_errors=True)
+            with PUBLISH_LOCK:
+                PUBLISH_JOBS[publish_job_id].update(status="error", phase="Publikace selhala", error=str(exc)[:500])
+
+
+@app.post("/api/publish/<report_id>")
+@requires_auth
+def api_publish(report_id):
+    try:
+        safe_report_dir(REPORTS_ROOT, report_id)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
+    config = BunnyConfig.from_env()
+    if config.missing():
+        return jsonify({"error": "Publikace není nakonfigurovaná. V .env chybí: " + ", ".join(config.missing())}), 400
+    payload = request.get_json(silent=True) or {}
+    requested = payload.get("sections") or []
+    if not isinstance(requested, list):
+        return jsonify({"error": "Neplatný seznam sekcí."}), 400
+    sections = set(str(item) for item in requested) & scanner.ALL_SECTIONS
+    if not sections:
+        return jsonify({"error": "Vyberte alespoň jednu sekci reportu."}), 400
+    publish_job_id = uuid.uuid4().hex[:16]
+    with PUBLISH_LOCK:
+        PUBLISH_JOBS[publish_job_id] = {
+            "status": "running", "phase": "Připravuji publikaci…", "current": 0,
+            "total": 0, "result": None, "error": None, "started_at": time.time(),
+        }
+    threading.Thread(target=_run_publish_job, args=(publish_job_id, report_id, sections), daemon=True).start()
+    return jsonify({"publish_job_id": publish_job_id})
+
+
+@app.get("/api/publish-progress/<publish_job_id>")
+@requires_auth
+def api_publish_progress(publish_job_id):
+    with PUBLISH_LOCK:
+        job = dict(PUBLISH_JOBS.get(publish_job_id) or {})
+    if not job:
+        return jsonify({"error": "Publikační úloha nebyla nalezena."}), 404
+    return jsonify(job)
+
+
+def cleanup_expired_publications(now: dt.datetime | None = None) -> int:
+    """Smaže pouze publikované balíčky po retenci; při chybě je ponechá pro další pokus."""
+    config = BunnyConfig.from_env()
+    if config.missing():
+        return 0
+    now = now or dt.datetime.now(dt.timezone.utc)
+    client = BunnyStorageClient(config)
+    removed = 0
+    for report_dir in Path(REPORTS_ROOT).iterdir():
+        report_json = report_dir / "report.json"
+        if not report_dir.is_dir() or not report_json.is_file():
+            continue
+        try:
+            data = scanner.load_report(str(report_dir))
+        except Exception:
+            continue
+        publications = list(data.get("publications") or [])
+        kept = []
+        changed = False
+        for publication in publications:
+            try:
+                delete_after = dt.datetime.fromisoformat(str(publication["delete_after"]))
+                if delete_after.tzinfo is None:
+                    delete_after = delete_after.replace(tzinfo=dt.timezone.utc)
+                if delete_after > now:
+                    kept.append(publication)
+                    continue
+                client.delete_directory(str(publication["remote_dir"]))
+                local_dir = (report_dir / str(publication.get("local_dir", ""))).resolve()
+                published_root = (report_dir / "published").resolve()
+                if local_dir.parent == published_root and local_dir.is_dir():
+                    shutil.rmtree(local_dir)
+                removed += 1
+                changed = True
+            except Exception:
+                kept.append(publication)
+        if changed:
+            data["publications"] = kept
+            _save_report_data(report_dir, data)
+    return removed
+
+
+def _retention_loop() -> None:
+    while True:
+        try:
+            cleanup_expired_publications()
+        except Exception:
+            traceback.print_exc()
+        time.sleep(24 * 60 * 60)
+
 # ---------------------------------------------------------------
 # ZOBRAZENÍ REPORTŮ
 # ---------------------------------------------------------------
@@ -375,7 +634,11 @@ def _check_playwright_browser() -> bool:
     try:
         from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
-            b = p.chromium.launch(headless=True)
+            launch_options = {"headless": True}
+            browser_channel = os.getenv("PDF_BROWSER_CHANNEL", "").strip()
+            if browser_channel:
+                launch_options["channel"] = browser_channel
+            b = p.chromium.launch(**launch_options)
             b.close()
         return True
     except Exception:
@@ -442,6 +705,8 @@ def _print_startup_report() -> bool:
     print(f"  Přihlášení:        {auth_line}")
     print(f"  Reporty se ukládají do: {REPORTS_ROOT} {'✅' if reports_ok else '❌'}")
     print(f"  Screenshoty / PDF: {'✅ připraveno' if browser_ok else '❌ chybí Playwright prohlížeč'}")
+    bunny_missing = BunnyConfig.from_env().missing()
+    print(f"  Bunny publikace:   {'✅ připraveno' if not bunny_missing else '⚠️ nenastaveno (lokální reporty fungují)'}")
     print(
         f"  Šetrnost k webu:   max {scanner.MAX_CONCURRENT_REQUESTS} souběžných "
         f"požadavků, {scanner.REQUEST_DELAY_MS} ms prodleva mezi nimi"
@@ -497,5 +762,7 @@ if __name__ == "__main__":
             args=(f"http://{HOST}:{PORT}/",),
             daemon=True,
         ).start()
+
+    threading.Thread(target=_retention_loop, daemon=True).start()
 
     app.run(host=HOST, port=PORT, debug=False)

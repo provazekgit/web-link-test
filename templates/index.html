@@ -25,7 +25,7 @@
     label{display:block;margin-top:12px;font-size:.88rem;font-weight:600;color:var(--ink)}
     label.inline{display:flex;align-items:center;gap:8px;font-weight:500;margin-top:8px;cursor:pointer}
     label.inline input{width:auto}
-    input[type=text], input:not([type]), input[type=url], input[type=date], textarea{
+    input[type=text], input:not([type]), input[type=url], input[type=email], input[type=date], textarea{
       width:100%;padding:9px 11px;margin-top:5px;border:1px solid var(--line);border-radius:8px;
       font-size:.92rem;font-family:inherit;background:#fbfcfd;color:var(--ink)
     }
@@ -116,6 +116,10 @@
 
       <label>Sitemap URL (volitelné)</label>
       <input name="sitemap_url" placeholder="https://24s.cz/sitemap.xml">
+
+      <label>E-mail klienta (volitelné)</label>
+      <input type="email" name="client_email" placeholder="klient@firma.cz">
+      <p class="muted" style="font-size:.8rem;margin:5px 0 0">Použije se pouze pro připravený koncept. Aplikace žádný e-mail sama neodešle.</p>
     </div>
 
     <div class="card">
