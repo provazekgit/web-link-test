@@ -36,6 +36,12 @@ def test_new_report_schema_and_local_publish_controls(tmp_path):
     assert "Odhad připravuji" in html
     assert "HTTP odezva" in html
     assert "123 ms (0,1 s)" in html
+    assert 'id="lightboxViewport"' in html
+    assert 'id="lightboxZoom"' in html
+    assert "fitLightboxWidth" in html
+    assert "zoomLightbox" in html
+    assert "Ctrl+kolečko přiblížit" in html
+    assert ".shot img{width:100%;height:110px;object-fit:cover;object-position:top;border:1px solid var(--line);border-radius:0" in html
     assert "client@example.cz" not in html
 
 

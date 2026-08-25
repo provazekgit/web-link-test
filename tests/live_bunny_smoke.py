@@ -53,7 +53,8 @@ def main() -> int:
             bundle = Path(temporary)
             (bundle / "assets").mkdir()
             marker = f"bunny-smoke-{smoke_id}"
-            (bundle / "assets" / "marker.txt").write_text(marker, encoding="utf-8")
+            marker_filename = "marker_(Pixel_7).txt"
+            (bundle / "assets" / marker_filename).write_text(marker, encoding="utf-8")
             (bundle / "report.json").write_text(json.dumps({"smoke": smoke_id}), encoding="utf-8")
             (bundle / "report.pdf").write_bytes(b"%PDF-1.4\n% Bunny smoke test\n%%EOF\n")
             (bundle / "index.html").write_text(
@@ -75,7 +76,7 @@ def main() -> int:
         signed_index = sign_directory_url(
             config.cdn_base_url, config.token_key, remote_dir, "index.html", expires
         )
-        signed_asset = signed_index.rsplit("/", 1)[0] + "/assets/marker.txt"
+        signed_asset = signed_index.rsplit("/", 1)[0] + "/assets/marker_%28Pixel_7%29.txt"
         unsigned_index = f"{config.cdn_base_url.rstrip('/')}/{remote_dir}/index.html"
 
         index_response = fetch_with_propagation(signed_index)

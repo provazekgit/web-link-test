@@ -65,7 +65,9 @@ def safe_report_dir(reports_root: str, report_id: str) -> Path:
 
 def safe_remote_path(value: str) -> str:
     cleaned = value.strip().strip("/")
-    if not cleaned or ".." in cleaned.split("/") or not re.fullmatch(r"[A-Za-z0-9._/-]+", cleaned):
+    # Závorky vznikají v bezpečně generovaných názvech screenshotů zařízení,
+    # např. Chrome_(Pixel_7). V URL se následně percent-enkódují funkcí quote().
+    if not cleaned or ".." in cleaned.split("/") or not re.fullmatch(r"[A-Za-z0-9._/()\-]+", cleaned):
         raise ValueError("Neplatná vzdálená cesta.")
     return cleaned
 

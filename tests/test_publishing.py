@@ -41,6 +41,22 @@ def test_safe_paths_reject_traversal(tmp_path):
             safe_remote_path(invalid)
 
 
+def test_safe_remote_path_accepts_generated_device_filename():
+    remote = "web-link-test/report/screens/example_Chrome_(Pixel_7)_2026-08-24.png"
+    assert safe_remote_path(remote) == remote
+
+
+def test_bunny_url_encodes_parentheses_in_generated_filename():
+    cfg = BunnyConfig(
+        "zone", "storage-secret", "storage.bunnycdn.com",
+        "https://zone.b-cdn.net", "token-secret", remote_prefix="web-link-test",
+    )
+    url = BunnyStorageClient(cfg, session=Session())._url(
+        "web-link-test/report/screens/example_Chrome_(Pixel_7).png"
+    )
+    assert "Chrome_%28Pixel_7%29.png" in url
+
+
 class Response:
     def __init__(self, status_code):
         self.status_code = status_code
