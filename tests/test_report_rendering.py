@@ -41,6 +41,11 @@ def test_new_report_schema_and_local_publish_controls(tmp_path):
     assert "fitLightboxWidth" in html
     assert "zoomLightbox" in html
     assert "Ctrl+kolečko přiblížit" in html
+    assert 'id="lightboxMenuToggle"' in html
+    assert 'id="lightboxCaption"' in html
+    assert 'aria-label="Předchozí screenshot"' in html
+    assert 'aria-label="Další screenshot"' in html
+    assert "navigateLightbox" in html
     assert ".shot img{width:100%;height:110px;object-fit:cover;object-position:top;border:1px solid var(--line);border-radius:0" in html
     assert "client@example.cz" not in html
 
